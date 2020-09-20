@@ -34,7 +34,8 @@ Stream.prototype._ready = function () {
   if(!this.live && this.cursor === 0 && this.blocks.length == 0) {
     this.ended = true
     return this.resume()
-  }
+  } else
+    this.resume()
 }
 
 Stream.prototype._writeToSink = function (data) {
@@ -49,36 +50,46 @@ Stream.prototype._writeToSink = function (data) {
     this.sink.write(this.cursor)
 }
 
+Stream.prototype._handleResult = function(err, result) {
+  var o = this.cursor
+  this.count++
+  if(
+    (this.min === null || this.min < o || this.min_inclusive === o) &&
+    (this.max === null || this.max > o || this.max_inclusive === o)
+  ) {
+    this._writeToSink(result[1])
+    if (this.live === true) {
+      if (result[0] != -1)
+        this.cursor = result[0]
+      else
+        return
+    }
+    else
+      this.cursor = result[0]
+
+    if (this.sink && !this.sink.paused && this.cursor != -1)
+      this.blocks.getNext(this.cursor, this._handleResult.bind(this))
+    else if (this.live !== true)
+      this.abort()
+  }
+  else {
+    if(this.limit > 0 && this.count >= this.limit) {
+      this.abort()
+      this.sink.end()
+    }
+  }
+}
+
 Stream.prototype.resume = function () {
   if(!this.sink || this.sink.paused) return
 
   if(this.ended && !this.sink.ended)
     return this.sink.end(this.ended === true ? null : this.ended)
 
-  while(this.sink && !this.sink.paused) {
-    if (this.cursor == -1) { // at end, FIXME: isLive check
-      this.abort()
-      return
-    }
+  if (this.cursor === -1)
+    return // not ready yet
 
-    this.blocks.getNext(this.cursor, (err, result) => {
-      var o = this.cursor
-      this.count++
-      if(
-        (this.min === null || this.min < o || this.min_inclusive === o) &&
-        (this.max === null || this.max > o || this.max_inclusive === o)
-      ) {
-        this._writeToSink(result[1])
-        this.cursor = result[0]
-      }
-      else {
-        if(this.limit > 0 && this.count >= this.limit) {
-          this.abort()
-          this.sink.end()
-        }
-      }
-    })
-  }
+  this.blocks.getNext(this.cursor, this._handleResult.bind(this))
 }
 
 Stream.prototype.abort = function (err) {

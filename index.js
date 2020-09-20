@@ -183,6 +183,7 @@ module.exports = function (file, opts) {
     }
     
     appendFrame(latestBlock, encodedData, nextWriteBlockOffset)
+    cache.set(latestBlockIndex, latestBlock)
     const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
     nextWriteBlockOffset += frameSize(encodedData)
     blocksToBeWritten[latestBlockIndex] = { block: latestBlock, fileOffset }
@@ -205,11 +206,20 @@ module.exports = function (file, opts) {
       debug("writing block of size: %d, to offset: %d",
             block.length, blockIndex * blockSize)
       raf.write(blockIndex * blockSize, block, (err) => {
-        if (err)
+        if (err) {
           debug("failed to write block %d", blockIndex)
-        else {
+          throw err
+        } else {
           debug("wrote block %d", blockIndex)
           since.set(fileOffset)
+
+          // write values to live streams
+          self.streams.forEach(stream => {
+            if (!stream.ended && stream.live) {
+              stream.cursor = fileOffset
+              stream.resume()
+            }
+          })
 
           var l = waitingDrain.length
           for (var i = 0; i < l; ++i)
@@ -257,8 +267,8 @@ module.exports = function (file, opts) {
     // streaming
     getNext,
     stream: function (opts) {
-      var stream = new Stream(this, opts)
-      this.streams.push(stream)
+      var stream = new Stream(self, opts)
+      self.streams.push(stream)
       return stream
     },
     streams: [],
