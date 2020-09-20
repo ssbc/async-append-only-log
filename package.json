@@ -1,0 +1,27 @@
+{
+  "name": "dead-simple-flumelog",
+  "description": "A simple flumelog",
+  "version": "1.0.0",
+  "homepage": "https://github.com/arj03/ds-flumelog",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arj03/ds-flumelog"
+  },
+  "dependencies": {
+    "debug": "^4.2.0",
+    "lru_cache": "^1.0.2",
+    "ltgt": "^2.2.1",
+    "obv": "0.0.1",
+    "polyraf": "^1.1.0",
+    "push-stream": "^11.0.0",
+    "push-stream-to-pull-stream": "^1.0.3"
+  },
+  "devDependencies": {
+    "tape": "^4.9.1"
+  },
+  "scripts": {
+    "test": "set -e; for t in test/*.js; do node $t; done"
+  },
+  "author": "Anders Rune Jensen <arj03@protonmail.ch>",
+  "license": "Beerware"
+}
