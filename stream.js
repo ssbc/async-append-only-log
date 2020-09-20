@@ -37,10 +37,6 @@ Stream.prototype._ready = function () {
   }
 }
 
-Stream.prototype._isAtEnd = function () {
-  return this.cursor >= this.blocks.length
-}
-
 Stream.prototype._writeToSink = function (data) {
   if (this.values) {
     if (!data.every(x => x === 0)) // skip deleted
@@ -55,20 +51,17 @@ Stream.prototype._writeToSink = function (data) {
 
 Stream.prototype.resume = function () {
   if(!this.sink || this.sink.paused) return
-  this._at_end = false
 
   if(this.ended && !this.sink.ended)
     return this.sink.end(this.ended === true ? null : this.ended)
 
-  var c = 0
-  
   while(this.sink && !this.sink.paused) {
-    if (!this.live && this._isAtEnd()) {
+    if (this.cursor == -1) { // at end, FIXME: isLive check
       this.abort()
       return
     }
 
-    this.blocks.getNext(this.cursor, (result) => {
+    this.blocks.getNext(this.cursor, (err, result) => {
       var o = this.cursor
       this.count++
       if(

@@ -10,36 +10,37 @@ var _codec = {encode: id, decode: id, buffer: true}
 
 // A block consists of a number of records
 // A record is length + data
-// After the last record in a block there will be a EOB marker
+
 // To know if there is another block after the current, you need the
 // file length
 
 module.exports = function (file, opts) {
   var cache = new Cache(1024) // this is 65mb!
-  const EOBMarker = 0
   var raf = RAF(file)
   var blockSize = opts && opts.blockSize || 65536
   var codec = opts && opts.codec || _codec
-  var writeTimeout = opts && opts.writeTimeout || 1000
+  var writeTimeout = opts && opts.writeTimeout || 250
+
+  // offset of last written record
   var since = Obv()
-  var blocksToBeWritten = {} // index -> block
+
+  var waiting = [], waitingDrain = []
+  var blocksToBeWritten = {} // blockIndex -> block
 
   var latestBlock = null
   var latestBlockIndex = null
-  var offsetInLatestBlock = null
+  var nextWriteBlockOffset = null
 
-  var self
-  
   raf.stat(function (_, stat) {
     var len = stat ? stat.size : -1
-    self.length = length = len == -1 ? 0 : len
     
     if (len == -1) {
       debug("empty file")
       latestBlock = Buffer.alloc(blockSize)
       latestBlockIndex = 0
-      offsetInLatestBlock = 0
+      nextWriteBlockOffset = 0
       cache.set(0, latestBlock)
+      since.set(0)
       while(waiting.length) waiting.shift()()
     } else {
       // data will always be written in block sizes
@@ -51,7 +52,7 @@ module.exports = function (file, opts) {
 
         latestBlock = buffer
         var recordLength = buffer.readUInt16LE(recordOffset)
-        offsetInLatestBlock = recordOffset + 2 + recordLength
+        nextWriteBlockOffset = recordOffset + 2 + recordLength
         latestBlockIndex = len / blockSize - 1
 
         debug("opened file, since: %d", since.value)
@@ -61,13 +62,18 @@ module.exports = function (file, opts) {
     }
   })
 
-  // FIXME: this is wrong
-  function getLastRecord(buffer, i) {
-    var length = buffer.readUInt16LE(i)
-    if (length == 0)
-      return i
-    else
-      return getLastRecord(buffer, i + 2 + length)
+  function getLastRecord(buffer) {
+    for (var i = 0, lastOk = 0; i < buffer.length;) {
+      var length = buffer.readUInt16LE(i)
+      if (length == 0)
+        break
+      else {
+        lastOk = i
+        i += 2 + length
+      }
+    }
+
+    return lastOk
   }
   
   function getData(buffer, recordOffset, cb) {
@@ -83,23 +89,34 @@ module.exports = function (file, opts) {
       cb(null, codec.decode(data))
   }
 
-  function get(offset, cb) {
-    var recordOffset = offset % blockSize
-    var blockStart = offset - recordOffset
+  function getRecordOffset(offset) {
+    return offset % blockSize
+  }
+
+  function getBlockIndex(offset) {
+    return (offset - getRecordOffset(offset)) / blockSize
+  }
+
+  function getBlock(offset, cb) {
+    var blockStart = offset - getRecordOffset(offset)
     var blockIndex = blockStart / blockSize
 
     var cachedBlock = cache.get(blockIndex)
     if (cachedBlock) {
       debug("getting offset %d from cache", offset)
-      getData(cachedBlock, recordOffset, cb)
+      cb(null, cachedBlock)
     } else {
       debug("getting offset %d from disc", offset)
-      raf.read(blockStart, blockSize, (err, buffer) => {
-        if (err) return cb(err)
-        cache.set(blockIndex, buffer)
-        getData(buffer, recordOffset, cb)
-      })
+      raf.read(blockStart, blockSize, cb)
     }
+  }
+
+  function get(offset, cb) {
+    getBlock(offset, (err, buffer) => {
+      if (err) return cb(err)
+      cache.set(getBlockIndex(offset), buffer)
+      getData(buffer, getRecordOffset(offset), cb)
+    })
   }
 
   // stream just skips deleted stuff
@@ -109,67 +126,40 @@ module.exports = function (file, opts) {
 
     var nextLength = buffer.readUInt16LE(recordOffset + 2 + length)
     var nextOffset = nextLength != 0 ? recordOffset + 2 + length : (blockIndex + 1) * blockSize
+    if (nextOffset > since.value)
+      nextOffset = -1
 
     return [nextOffset, codec.decode(data)]
   }
 
-  // FIXME: refactor me
   function getNext(offset, cb) {
-    var recordOffset = offset % blockSize
-    var blockStart = offset - recordOffset
-    var blockIndex = blockStart / blockSize
-
-    var cachedBlock = cache.get(blockIndex)
-    if (cachedBlock) {
-      debug("getting offset %d from cache", offset)
-      cb(getDataNextOffset(cachedBlock, recordOffset, blockIndex))
-    } else {
-      debug("getting offset %d from disc", offset)
-      raf.read(blockStart, blockSize, (err, buffer) => {
-        if (err) return cb(err)
-        cache.set(blockIndex, buffer)
-        cb(getDataNextOffset(buffer, recordOffset, blockIndex))
-      })
-    }
-  }
-  
-  function nullMessageInBlock(buffer, recordOffset)
-  {
-    var length = buffer.readUInt16LE(recordOffset)
-    const nullBytes = Buffer.alloc(length)
-    nullBytes.copy(buffer, recordOffset+2)
+    getBlock(offset, (err, buffer) => {
+      if (err) return cb(err)
+      const blockIndex = getBlockIndex(offset)
+      cache.set(blockIndex, buffer)
+      cb(null, getDataNextOffset(buffer, getRecordOffset(offset), blockIndex))
+    })
   }
   
   function del(offset, cb)
   {
-    var recordOffset = offset % blockSize
-    var blockStart = offset - recordOffset
-    var blockIndex = blockStart / blockSize
-    
-    var cachedBlock = cache.get(blockIndex)
-    if (cachedBlock) {
-      nullMessageInBlock(cachedBlock, recordOffset)
-      blocksToBeWritten[blockIndex] = cachedBlock
-      cb(null, cachedBlock)
-    }
-    else
-      raf.read(blockStart, blockSize, (err, buffer) => {
-        if (err) return cb(err)
-        nullMessageInBlock(buffer, recordOffset)
-        cache.set(blockIndex, buffer)
-        blocksToBeWritten[blockIndex] = buffer
-        cb(null, buffer)
-      })
+    getBlock(offset, (err, buffer) => {
+      if (err) return cb(err)
+
+      const recordOffset = getRecordOffset(offset)
+      const recordLength = buffer.readUInt16LE(recordOffset)
+      const nullBytes = Buffer.alloc(recordLength)
+      nullBytes.copy(buffer, recordOffset+2)
+
+      // we write directly here to make normal write simpler
+      raf.write(offset - recordOffset, buffer, cb)
+    })
   }
 
   function appendFrame(buffer, data, offset)
   {
-    // length
     buffer.writeUInt16LE(data.length, offset)
-    // data
     data.copy(buffer, offset+2)
-    // EOB marker
-    buffer.writeUInt16LE(EOBMarker, offset + data.length + 2)
   }
 
   function frameSize(buffer)
@@ -188,23 +178,23 @@ module.exports = function (file, opts) {
     if (frameSize(encodedData) + 2 > blockSize)
       throw new Error("data larger than block size")
 
-    if (offsetInLatestBlock + frameSize(encodedData) + 2 > blockSize)
+    if (nextWriteBlockOffset + frameSize(encodedData) + 2 > blockSize)
     {
       // doesn't fit
       var buffer = Buffer.alloc(blockSize)
       latestBlock = buffer
       latestBlockIndex += 1
-      offsetInLatestBlock = 0
+      nextWriteBlockOffset = 0
       cache.set(latestBlockIndex, latestBlock)
       debug("data doesn't fit current block, creating new")
     }
     
-    appendFrame(latestBlock, encodedData, offsetInLatestBlock)
-    const fileOffset = offsetInLatestBlock + latestBlockIndex * blockSize
-    offsetInLatestBlock += frameSize(encodedData)
-    blocksToBeWritten[latestBlockIndex] = latestBlock
+    appendFrame(latestBlock, encodedData, nextWriteBlockOffset)
+    const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
+    nextWriteBlockOffset += frameSize(encodedData)
+    blocksToBeWritten[latestBlockIndex] = { block: latestBlock, fileOffset }
+    scheduleWrite()
     debug("data inserted at offset %d", fileOffset)
-    self.length += offsetInLatestBlock + latestBlockIndex * blockSize
     cb(null, fileOffset)
   }
 
@@ -213,27 +203,36 @@ module.exports = function (file, opts) {
   }
 
   function write() {
-    for (var i in blocksToBeWritten)
+    // FIXME: does this need to be sorted?
+    for (var blockIndex in blocksToBeWritten)
     {
-      var block = blocksToBeWritten[i]
-      delete blocksToBeWritten[i]
-      debug("writing block of size %d to %d", block.length, i * blockSize)
-      raf.write(i * blockSize, block, (err) => {
+      const { block, fileOffset } = blocksToBeWritten[blockIndex]
+      delete blocksToBeWritten[blockIndex]
+      debug("writing block of size: %d, to offset: %d",
+            block.length, blockIndex * blockSize)
+      raf.write(blockIndex * blockSize, block, (err) => {
         if (err)
-          debug("failed to write block %d", i)
-        else
-          debug("wrote block %d", i)
+          debug("failed to write block %d", blockIndex)
+        else {
+          debug("wrote block %d", blockIndex)
+          since.set(fileOffset)
+
+          var l = waitingDrain.length
+          for (var i = 0; i < l; ++i)
+            waitingDrain[i]()
+          waitingDrain = waitingDrain.slice(l)
+        }
       })
     }
   }
 
   function close(cb) {
-    write()
-    // FIXME: close streams
-    raf.close(cb)
+    self.onDrain(function () {
+      while(self.streams.length)
+        self.streams.shift().abort(new Error('ds-flumelog: closed'))
+      raf.close(cb)
+    })
   }
-  
-  var waiting = []
   
   function onLoad (fn) {
     return function (arg, cb) {
@@ -256,14 +255,18 @@ module.exports = function (file, opts) {
     since,
     onReady,
 
-    getNext,
+    onDrain: onLoad(function (fn) {
+      if (Object.keys(blocksToBeWritten).length == 0) fn()
+      else waitingDrain.push(fn)
+    }),
 
+    // streaming
+    getNext,
     stream: function (opts) {
       var stream = new Stream(this, opts)
       this.streams.push(stream)
       return stream
     },
-
     streams: [],
   }
 }

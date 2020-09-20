@@ -125,11 +125,13 @@ tape('stream delete', function(t) {
       if(err) throw err
       db.del(offset1, function (err) {
         t.error(err)
-        db.stream({seqs: false}).pipe(collect(function (err, ary) {
-          t.notOk(err)
-          t.deepEqual(ary, [b2])
-          t.end()
-        }))
+        db.onDrain(() => {
+          db.stream({seqs: false}).pipe(collect(function (err, ary) {
+            t.notOk(err)
+            t.deepEqual(ary, [b2])
+            t.end()
+          }))
+        })
       })
     })
   })
