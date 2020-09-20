@@ -68,7 +68,6 @@ tape('second', function (t) {
   })
 })
 
-// FIXME: add test for seqs
 // FIXME: add test for limit
 
 var v3 = B(0x30, 30)
@@ -82,4 +81,36 @@ tape('live', function (t) {
     t.deepEqual(sink.array, [v1, v2, v3])
     t.end()
   })
+})
+
+tape('seqs', function (t) {
+  log.stream({seqs: true}).pipe(collect(function (err, ary) {
+    t.notOk(err)
+    t.deepEqual(ary, [{ seq: 0, value: v1}, { seq: 10 + 2, value: v2 }, { seq: 10 + 2 + 20 + 2, value: v3 }])
+    t.end()
+  }))
+})
+
+tape('limit', function (t) {
+  log.stream({seqs: false, limit: 1}).pipe(collect(function (err, ary) {
+    t.notOk(err)
+    t.deepEqual(ary, [v1])
+    t.end()
+  }))
+})
+
+tape('limit gte', function (t) {
+  log.stream({seqs: false, gte: 12, limit: 1}).pipe(collect(function (err, ary) {
+    t.notOk(err)
+    t.deepEqual(ary, [v2])
+    t.end()
+  }))
+})
+
+tape('gte', function (t) {
+  log.stream({seqs: false, gte: 12}).pipe(collect(function (err, ary) {
+    t.notOk(err)
+    t.deepEqual(ary, [v2, v3])
+    t.end()
+  }))
 })

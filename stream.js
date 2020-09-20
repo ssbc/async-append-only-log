@@ -67,16 +67,15 @@ Stream.prototype._handleResult = function(err, result) {
     else
       this.cursor = result[0]
 
+    if (this.limit > 0 && this.count >= this.limit) {
+      this.abort()
+      return
+    }
+
     if (this.sink && !this.sink.paused && this.cursor != -1)
       this.blocks.getNext(this.cursor, this._handleResult.bind(this))
     else if (this.live !== true)
       this.abort()
-  }
-  else {
-    if(this.limit > 0 && this.count >= this.limit) {
-      this.abort()
-      this.sink.end()
-    }
   }
 }
 
