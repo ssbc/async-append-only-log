@@ -1,21 +1,15 @@
 const Cache = require('lru_cache').LRUCache
 const RAF = require('polyraf')
 const Obv = require('obv')
-const debug = require('debug')("dead-simple-flumelog")
+const debug = require('debug')("ds-flumelog")
 
 const Stream = require("./stream")
 
 function id(e) { return e }
 var _codec = {encode: id, decode: id, buffer: true}
 
-// A block consists of a number of records
-// A record is length + data
-
-// To know if there is another block after the current, you need the
-// file length
-
 module.exports = function (file, opts) {
-  var cache = new Cache(1024) // this is 65mb!
+  var cache = new Cache(1024) // this is potentially 65mb!
   var raf = RAF(file)
   var blockSize = opts && opts.blockSize || 65536
   var codec = opts && opts.codec || _codec
@@ -25,7 +19,7 @@ module.exports = function (file, opts) {
   var since = Obv()
 
   var waiting = [], waitingDrain = []
-  var blocksToBeWritten = {} // blockIndex -> block
+  var blocksToBeWritten = {} // blockIndex -> { block, fileOffset }
 
   var latestBlock = null
   var latestBlockIndex = null
@@ -43,7 +37,6 @@ module.exports = function (file, opts) {
       since.set(0)
       while(waiting.length) waiting.shift()()
     } else {
-      // data will always be written in block sizes
       raf.read(len - blockSize, blockSize, (err, buffer) => {
         if (err) throw err
         
@@ -62,6 +55,14 @@ module.exports = function (file, opts) {
     }
   })
 
+  function getRecordOffset(offset) {
+    return offset % blockSize
+  }
+
+  function getBlockIndex(offset) {
+    return (offset - getRecordOffset(offset)) / blockSize
+  }
+
   function getLastRecord(buffer) {
     for (var i = 0, lastOk = 0; i < buffer.length;) {
       var length = buffer.readUInt16LE(i)
@@ -76,27 +77,6 @@ module.exports = function (file, opts) {
     return lastOk
   }
   
-  function getData(buffer, recordOffset, cb) {
-    var length = buffer.readUInt16LE(recordOffset)
-    var data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
-
-    if (data.every(x => x === 0)) {
-      const err = new Error('item has been deleted')
-      err.code = 'flumelog:deleted'
-      return cb(err)
-    }
-    else
-      cb(null, codec.decode(data))
-  }
-
-  function getRecordOffset(offset) {
-    return offset % blockSize
-  }
-
-  function getBlockIndex(offset) {
-    return (offset - getRecordOffset(offset)) / blockSize
-  }
-
   function getBlock(offset, cb) {
     var blockStart = offset - getRecordOffset(offset)
     var blockIndex = blockStart / blockSize
@@ -111,6 +91,19 @@ module.exports = function (file, opts) {
     }
   }
 
+  function getData(buffer, recordOffset, cb) {
+    var length = buffer.readUInt16LE(recordOffset)
+    var data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
+
+    if (data.every(x => x === 0)) {
+      const err = new Error('item has been deleted')
+      err.code = 'flumelog:deleted'
+      return cb(err)
+    }
+    else
+      cb(null, codec.decode(data))
+  }
+
   function get(offset, cb) {
     getBlock(offset, (err, buffer) => {
       if (err) return cb(err)
@@ -119,7 +112,7 @@ module.exports = function (file, opts) {
     })
   }
 
-  // stream just skips deleted stuff
+  // stream skips deleted stuff
   function getDataNextOffset(buffer, recordOffset, blockIndex) {
     var length = buffer.readUInt16LE(recordOffset)
     var data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
@@ -199,6 +192,7 @@ module.exports = function (file, opts) {
   }
 
   function scheduleWrite() {
+    // FIXME: debounce this
     setTimeout(write, writeTimeout)
   }
 

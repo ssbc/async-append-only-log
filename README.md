@@ -8,9 +8,9 @@ about. Flumelog is the lowest part of the SSB stack, so it should
 extremly stable while still maintaining good performance.
 
 A DS flumelog consists of a number of blocks, that contain a number of
-records. The records is a simple length + data. A record must be in
+records. The records are simply a length + data. A record must be in
 one and only one block, which means there will be some empty space at
-the end of a block.
+the end of a block. Blocks are always written in full.
 
 ```
 <block>
