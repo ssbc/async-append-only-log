@@ -1,11 +1,11 @@
 var tape = require('tape')
 var fs = require('fs')
-var Offset = require('../')
+var Log = require('../')
 
 tape('basic binary', function (t) {
   var file = '/tmp/dsf-test-basic-binary.log'
   try { fs.unlinkSync(file) } catch (_) {}
-  var db = Offset(file, {blockSize: 2*1024})
+  var db = Log(file, {blockSize: 2*1024})
 
   var v1 = Buffer.from('testing')
   var v2 = Buffer.from('testing2')
@@ -36,7 +36,7 @@ var json2 = { test: 'testing2' }
 tape('basic json', function (t) {
   var file = '/tmp/dsf-test-basic-json.log'
   try { fs.unlinkSync(file) } catch (_) {}
-  var db = Offset(file, {
+  var db = Log(file, {
     blockSize: 2*1024,
     codec: require('flumecodec/json')
   })
@@ -63,7 +63,7 @@ tape('basic json', function (t) {
 
 tape('basic json re-read', function (t) {
   var file = '/tmp/dsf-test-basic-json.log'
-  var db = Offset(file, {
+  var db = Log(file, {
     blockSize: 2*1024,
     codec: require('flumecodec/json')
   })

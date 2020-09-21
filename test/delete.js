@@ -1,6 +1,6 @@
 var tape = require('tape')
 var fs = require('fs')
-var Offset = require('../')
+var Log = require('../')
 
 var v1 = Buffer.from('hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world hello world')
 var v2 = Buffer.from('hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db hello offset db')
@@ -9,7 +9,7 @@ var v3 = Buffer.from('hello offsetty db hello offsetty db hello offsetty db hell
 tape('simple', function (t) {
   var file = '/tmp/fao-test_del.log'
   try { fs.unlinkSync(file) } catch (_) {}
-  var db = Offset(file, {blockSize: 2*1024})
+  var db = Log(file, {blockSize: 2*1024})
 
   db.append(v1, function (err, offset1) {
     if(err) throw err
@@ -51,7 +51,7 @@ tape('simple', function (t) {
 
 tape('simple reread', function (t) {
   var file = '/tmp/fao-test_del.log'
-  var db = Offset(file, {blockSize: 2*1024})
+  var db = Log(file, {blockSize: 2*1024})
 
   var offset1 = 0
   var offset2 = v1.length+2
@@ -86,7 +86,7 @@ tape('simple reread', function (t) {
 
 tape('simple reread 2', function (t) {
   var file = '/tmp/fao-test_del.log'
-  var db = Offset(file, {blockSize: 2*1024})
+  var db = Log(file, {blockSize: 2*1024})
 
   db.get(0, function (err, b) {
     if(err) throw err
@@ -115,7 +115,7 @@ function collect (cb) {
 
 tape('stream delete', function(t) {
   var file = '/tmp/offset-test_'+Date.now()+'.log'
-  var db = Offset(file, {blockSize: 64*1024})
+  var db = Log(file, {blockSize: 64*1024})
 
   var b2 = Buffer.from('hello offset db')
   

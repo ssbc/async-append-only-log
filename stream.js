@@ -40,7 +40,7 @@ Stream.prototype._ready = function () {
 
 Stream.prototype._writeToSink = function (data) {
   if (this.values) {
-    if (!data.every(x => x === 0)) // skip deleted
+    if (data != null) // skip deleted
     {
       if (this.seqs) this.sink.write({ seq: this.cursor, value: data })
       else this.sink.write(data)

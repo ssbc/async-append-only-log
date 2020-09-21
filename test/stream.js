@@ -1,11 +1,11 @@
 var tape = require('tape')
 var fs = require('fs')
-var FlumeLogRaf = require('../')
+var Log = require('../')
 
 const filename = '/tmp/dsf-test-stream.log'
 
 try { fs.unlinkSync(filename) } catch (_) {}
-var log = FlumeLogRaf(filename, {blockSize: 64*1024})
+var log = Log(filename, {blockSize: 64*1024})
 
 function B (fill, length) {
   var b = Buffer.alloc(length)
@@ -46,7 +46,7 @@ tape('single', function (t) {
 })
 
 tape('single, reload', function (t) {
-  log = FlumeLogRaf(filename, {blockSize: 64*1024})
+  log = Log(filename, {blockSize: 64*1024})
   log.stream({seqs: false}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v1])

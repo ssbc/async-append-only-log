@@ -123,7 +123,10 @@ module.exports = function (file, opts) {
     if (nextOffset > since.value)
       nextOffset = -1
 
-    return [nextOffset, codec.decode(data)]
+    if (data.every(x => x === 0))
+      return [nextOffset, null]
+    else
+      return [nextOffset, codec.decode(data)]
   }
 
   function getNext(offset, cb) {
