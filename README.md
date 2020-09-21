@@ -32,7 +32,8 @@ will be updated once the data is written. `onDrain` can be used to
 know when data has been written if needed. Streaming will only emit
 values that have been written to storage. This is to ensure that a
 view will never to ahead of the main log and thus end up in a bad
-state if the system crashes before data is written.
+state if the system crashes before data is written. `get` will return
+values that have not been written to disk yet.
 
 [flumelog-aligned-offset]: https://github.com/flumedb/flumelog-aligned-offset/
 [flumelog-offset]: https://github.com/flumedb/flumelog-offset/
