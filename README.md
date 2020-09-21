@@ -1,4 +1,4 @@
-# Dead simple flumelog
+# Async flumelog
 
 Status: very early WIP. Don't use this for anything
 

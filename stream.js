@@ -3,14 +3,18 @@ module.exports = Stream
 
 function Stream (blocks, opts) {
   opts = opts || {}
-  this.live = !!opts.live
+
   this.blocks = blocks
-  this.cursor = -1
+  this.live = !!opts.live
   this.seqs = opts.seqs !== false
   this.values = opts.values !== false
   this.limit = opts.limit || 0
-  this.count = 0
+
   this.min = this.max = this.min_inclusive = this.max_inclusive = null
+  this.cursor = -1
+  this.count = 0
+  this.writing = false
+  this.ended = false
 
   var self = this
   this.opts = opts
@@ -19,23 +23,25 @@ function Stream (blocks, opts) {
 
 Stream.prototype._ready = function () {
   this.min = ltgt.lowerBound(this.opts, null)
-  if(ltgt.lowerBoundInclusive(this.opts))
+  if (ltgt.lowerBoundInclusive(this.opts))
     this.min_inclusive = this.min
 
   this.max = ltgt.upperBound(this.opts, null)
-  if(ltgt.upperBoundInclusive(this.opts))
+  if (ltgt.upperBoundInclusive(this.opts))
     this.max_inclusive = this.max
 
   //note: cursor has default of the current length or zero.
   this.cursor = ltgt.lowerBound(this.opts, 0)
 
-  if(this.cursor < 0) this.cursor = 0
+  if (this.cursor < 0) this.cursor = 0
 
-  if(!this.live && this.cursor === 0 && this.blocks.length == 0) {
+  if (!this.live && this.cursor === 0 && this.blocks.since.value == -1)
     this.ended = true
-    return this.resume()
-  } else
-    this.resume()
+
+  if (this.live && this.cursor === 0 && this.blocks.since.value == -1)
+    this.cursor = -1
+
+  this.resume()
 }
 
 Stream.prototype._writeToSink = function (data) {
@@ -53,7 +59,7 @@ Stream.prototype._writeToSink = function (data) {
 Stream.prototype._handleResult = function(err, result) {
   var o = this.cursor
   this.count++
-  if(
+  if (
     (this.min === null || this.min < o || this.min_inclusive === o) &&
     (this.max === null || this.max > o || this.max_inclusive === o)
   ) {
@@ -61,8 +67,10 @@ Stream.prototype._handleResult = function(err, result) {
     if (this.live === true) {
       if (result[0] != -1)
         this.cursor = result[0]
-      else
+      else {
+        this.writing = false
         return
+      }
     }
     else
       this.cursor = result[0]
@@ -80,14 +88,18 @@ Stream.prototype._handleResult = function(err, result) {
 }
 
 Stream.prototype.resume = function () {
-  if(!this.sink || this.sink.paused) return
+  if (!this.sink || this.sink.paused) return
 
-  if(this.ended && !this.sink.ended)
+  if (this.ended && !this.sink.ended)
     return this.sink.end(this.ended === true ? null : this.ended)
 
   if (this.cursor === -1)
     return // not ready yet
 
+  if (this.live && !this.writing && this.cursor > 0)
+    return // wait for data
+
+  this.writing = true
   this.blocks.getNext(this.cursor, this._handleResult.bind(this))
 }
 
@@ -96,8 +108,8 @@ Stream.prototype.abort = function (err) {
   //but append isn't implemented yet...
   this.ended = err || true
   var i = this.blocks.streams.indexOf(this)
-  if(~i) this.blocks.streams.splice(i, 1)
-  if(!this.sink.ended)
+  if (~i) this.blocks.streams.splice(i, 1)
+  if (!this.sink.ended)
     this.sink.end(err === true ? null : err)
 }
 

@@ -1,16 +1,16 @@
 {
-  "name": "dead-simple-flumelog",
-  "description": "A simple flumelog",
+  "name": "async-flumelog",
+  "description": "An async flumelog",
   "version": "1.0.0",
-  "homepage": "https://github.com/arj03/ds-flumelog",
+  "homepage": "https://github.com/arj03/async-flumelog",
   "repository": {
     "type": "git",
-    "url": "https://github.com/arj03/ds-flumelog"
+    "url": "https://github.com/arj03/async-flumelog"
   },
   "dependencies": {
     "debug": "^4.2.0",
+    "hashlru": "^2.3.0",
     "lodash.debounce": "^4.0.8",
-    "lru_cache": "^1.0.2",
     "ltgt": "^2.2.1",
     "obv": "0.0.1",
     "polyraf": "^1.1.0",
@@ -18,8 +18,13 @@
     "push-stream-to-pull-stream": "^1.0.3"
   },
   "devDependencies": {
+    "cont": "^1.0.3",
+    "flumecodec": "0.0.1",
+    "flumedb": "^2.1.8",
+    "flumeview-level": "^4.0.4",
+    "pull-stream": "^3.6.14",
     "tape": "^4.9.1",
-    "flumecodec": "0.0.1"
+    "test-flumeview-index": "^2.3.1"
   },
   "scripts": {
     "test": "set -e; for t in test/*.js; do node $t; done"

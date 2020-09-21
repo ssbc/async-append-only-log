@@ -1,17 +1,17 @@
-const Cache = require('lru_cache').LRUCache
+const Cache = require('hashlru')
 const RAF = require('polyraf')
 const Obv = require('obv')
 const debounce = require('lodash.debounce')
-const debug = require('debug')("ds-flumelog")
+const debug = require('debug')("async-flumelog")
 
 const Stream = require("./stream")
 
 function id(e) { return e }
 var _codec = {encode: id, decode: id, buffer: true}
 
-module.exports = function (file, opts) {
+module.exports = function (filename, opts) {
   var cache = new Cache(1024) // this is potentially 65mb!
-  var raf = RAF(file)
+  var raf = RAF(filename)
   var blockSize = opts && opts.blockSize || 65536
   var codec = opts && opts.codec || _codec
   var writeTimeout = opts && opts.writeTimeout || 250
@@ -20,7 +20,7 @@ module.exports = function (file, opts) {
   var since = Obv()
 
   var waiting = [], waitingDrain = []
-  var blocksToBeWritten = {} // blockIndex -> { block, fileOffset }
+  var blocksToBeWritten = new Map() // blockIndex -> { block, fileOffset }
 
   var latestBlock = null
   var latestBlockIndex = null
@@ -35,7 +35,7 @@ module.exports = function (file, opts) {
       latestBlockIndex = 0
       nextWriteBlockOffset = 0
       cache.set(0, latestBlock)
-      since.set(0)
+      since.set(-1)
       while(waiting.length) waiting.shift()()
     } else {
       raf.read(len - blockSize, blockSize, (err, buffer) => {
@@ -88,7 +88,10 @@ module.exports = function (file, opts) {
       cb(null, cachedBlock)
     } else {
       debug("getting offset %d from disc", offset)
-      raf.read(blockStart, blockSize, cb)
+      raf.read(blockStart, blockSize, (err, buffer) => {
+        cache.set(getBlockIndex(offset), buffer)
+        cb(err, buffer)
+      })
     }
   }
 
@@ -108,7 +111,6 @@ module.exports = function (file, opts) {
   function get(offset, cb) {
     getBlock(offset, (err, buffer) => {
       if (err) return cb(err)
-      cache.set(getBlockIndex(offset), buffer)
       getData(buffer, getRecordOffset(offset), cb)
     })
   }
@@ -119,7 +121,7 @@ module.exports = function (file, opts) {
     var data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
 
     var nextLength = buffer.readUInt16LE(recordOffset + 2 + length)
-    var nextOffset = nextLength != 0 ? recordOffset + 2 + length : (blockIndex + 1) * blockSize
+    var nextOffset = nextLength != 0 ? recordOffset + 2 + length + blockIndex * blockSize : (blockIndex + 1) * blockSize
     if (nextOffset > since.value)
       nextOffset = -1
 
@@ -132,9 +134,7 @@ module.exports = function (file, opts) {
   function getNext(offset, cb) {
     getBlock(offset, (err, buffer) => {
       if (err) return cb(err)
-      const blockIndex = getBlockIndex(offset)
-      cache.set(blockIndex, buffer)
-      cb(null, getDataNextOffset(buffer, getRecordOffset(offset), blockIndex))
+      cb(null, getDataNextOffset(buffer, getRecordOffset(offset), getBlockIndex(offset)))
     })
   }
   
@@ -163,11 +163,8 @@ module.exports = function (file, opts) {
   {
     return buffer.length + 2
   }
-  
-  function append(data, cb)
-  {
-    // FIXME: support sending an array of data
 
+  function appendSingle(data) {
     let encodedData = codec.encode(data)
     if (typeof encodedData == 'string')
       encodedData = Buffer.from(encodedData)
@@ -182,26 +179,37 @@ module.exports = function (file, opts) {
       latestBlock = buffer
       latestBlockIndex += 1
       nextWriteBlockOffset = 0
-      cache.set(latestBlockIndex, latestBlock)
       debug("data doesn't fit current block, creating new")
     }
     
     appendFrame(latestBlock, encodedData, nextWriteBlockOffset)
-    cache.set(latestBlockIndex, latestBlock)
+    cache.set(latestBlockIndex, latestBlock) // update cache
     const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
     nextWriteBlockOffset += frameSize(encodedData)
     blocksToBeWritten[latestBlockIndex] = { block: latestBlock, fileOffset }
     scheduleWrite()
     debug("data inserted at offset %d", fileOffset)
-    cb(null, fileOffset)
+    return fileOffset
+  }
+
+  function append(data, cb)
+  {
+    if (Array.isArray(data)) {
+      var fileOffset = 0
+      for (var i = 0, length = data.length; i < length; ++i)
+        fileOffset = appendSingle(data[i])
+
+      cb(null, fileOffset)
+    } else
+      cb(null, appendSingle(data))
   }
 
   scheduleWrite = debounce(write, writeTimeout)
 
   function write() {
-    // FIXME: does this need to be sorted?
-    for (var blockIndex in blocksToBeWritten)
+    for (var bi in blocksToBeWritten)
     {
+      const blockIndex = bi
       const { block, fileOffset } = blocksToBeWritten[blockIndex]
       delete blocksToBeWritten[blockIndex]
       debug("writing block of size: %d, to offset: %d",
@@ -214,14 +222,17 @@ module.exports = function (file, opts) {
           debug("wrote block %d", blockIndex)
           since.set(fileOffset)
 
-          // FIXME: if you have multiple writes, the last write might
-          // potentially be faster than the stream, so assigning to
-          // cursor should probably on do so if waiting for new data
-
           // write values to live streams
           self.streams.forEach(stream => {
-            if (!stream.ended && stream.live) {
-              stream.cursor = fileOffset
+            if (!stream.ended && stream.live && !stream.writing) {
+              if (stream.cursor === -1) {
+                stream.cursor = 0
+              } else {
+                var next = getDataNextOffset(block, getRecordOffset(stream.cursor), blockIndex)
+                stream.cursor = next[0]
+                stream.writing = true
+              }
+
               stream.resume()
             }
           })
@@ -237,8 +248,8 @@ module.exports = function (file, opts) {
 
   function close(cb) {
     self.onDrain(function () {
-      while(self.streams.length)
-        self.streams.shift().abort(new Error('ds-flumelog: closed'))
+      while (self.streams.length)
+        self.streams.shift().abort(new Error('async-flumelog: closed'))
       raf.close(cb)
     })
   }
@@ -268,6 +279,8 @@ module.exports = function (file, opts) {
       if (Object.keys(blocksToBeWritten).length == 0) fn()
       else waitingDrain.push(fn)
     }),
+
+    filename,
 
     // streaming
     getNext,

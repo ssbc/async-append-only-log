@@ -37,11 +37,13 @@ var v1 = B(0x10, 10)
 tape('single', function (t) {
   log.append(v1, function (err) {
     t.notOk(err)
-    log.stream({seqs: false}).pipe(collect(function (err, ary) {
-      t.notOk(err)
-      t.deepEqual(ary, [v1])
-      log.close(t.end)
-    }))
+    log.onDrain(() => {
+      log.stream({seqs: false}).pipe(collect(function (err, ary) {
+        t.notOk(err)
+        t.deepEqual(ary, [v1])
+        t.end()
+      }))
+    })
   })
 })
 
@@ -67,8 +69,6 @@ tape('second', function (t) {
     })
   })
 })
-
-// FIXME: add test for limit
 
 var v3 = B(0x30, 30)
 tape('live', function (t) {
