@@ -26,10 +26,13 @@ data in a record and no pointer at the end of a block. These were to
 be able to run the log in reverse, but I have never seen the need for
 that.
 
-Writing to the log is always async. The since observable will be
-updated once the data is written to storage. Streaming will only emit
+Writing to the log is always async. Note this is different from
+[flumelog-offset] and [flumelog-aligned-offfset]. The since observable
+will be updated once the data is written. `onDrain` can be used to
+know when data has been written if needed. Streaming will only emit
 values that have been written to storage. This is to ensure that a
 view will never to ahead of the main log and thus end up in a bad
 state if the system crashes before data is written.
 
 [flumelog-aligned-offset]: https://github.com/flumedb/flumelog-aligned-offset/
+[flumelog-offset]: https://github.com/flumedb/flumelog-offset/
