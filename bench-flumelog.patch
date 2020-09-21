@@ -1,0 +1,15 @@
+--- node_modules/bench-flumelog/index.js~	1985-10-26 09:15:00.000000000 +0100
++++ node_modules/bench-flumelog/index.js	2020-09-22 00:28:03.493468776 +0200
+@@ -65,8 +65,10 @@
+       }, function (err) {
+         if(err && err != true) throw err
+         var time = (Date.now() - start)/1000
+-        print('append', c/time, (total/MB)/time, c, total/MB, time)
+-        next2()
++        log.onDrain(() => {
++          print('append', c/time, (total/MB)/time, c, total/MB, time)
++          next2()
++        })
+       })
+     )
+   }

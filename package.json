@@ -18,6 +18,7 @@
     "push-stream-to-pull-stream": "^1.0.3"
   },
   "devDependencies": {
+    "bench-flumelog": "^2.0.0",
     "cont": "^1.0.3",
     "flumecodec": "0.0.1",
     "flumedb": "^2.1.8",
