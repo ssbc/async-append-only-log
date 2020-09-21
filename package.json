@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "debug": "^4.2.0",
+    "lodash.debounce": "^4.0.8",
     "lru_cache": "^1.0.2",
     "ltgt": "^2.2.1",
     "obv": "0.0.1",

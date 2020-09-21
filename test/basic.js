@@ -23,7 +23,7 @@ tape('basic binary', function (t) {
           if(err) throw err
           t.equal(b2.toString(), v2.toString())
 
-          t.end()
+          db.close(t.end)
         })
       })
     })

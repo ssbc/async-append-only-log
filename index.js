@@ -1,6 +1,7 @@
 const Cache = require('lru_cache').LRUCache
 const RAF = require('polyraf')
 const Obv = require('obv')
+const debounce = require('lodash.debounce')
 const debug = require('debug')("ds-flumelog")
 
 const Stream = require("./stream")
@@ -192,10 +193,7 @@ module.exports = function (file, opts) {
     cb(null, fileOffset)
   }
 
-  function scheduleWrite() {
-    // FIXME: debounce this
-    setTimeout(write, writeTimeout)
-  }
+  scheduleWrite = debounce(write, writeTimeout)
 
   function write() {
     // FIXME: does this need to be sorted?
@@ -212,6 +210,10 @@ module.exports = function (file, opts) {
         } else {
           debug("wrote block %d", blockIndex)
           since.set(fileOffset)
+
+          // FIXME: if you have multiple writes, the last write might
+          // potentially be faster than the stream, so assigning to
+          // cursor should probably on do so if waiting for new data
 
           // write values to live streams
           self.streams.forEach(stream => {
