@@ -47,11 +47,11 @@ append (used for onboarding) and stream (used for building indexes).
 async flumelog:
 
 name, ops/second, mb/second, ops, total-mb, seconds
-append, 834834.433, 124.705, 4175007, 623.65, 5.001
-stream, 1346776.451, 201.177, 4175007, 623.65, 3.1
-stream no cache, 997373.865, 148.984, 4175007, 623.65, 4.186
-stream10, 2087121.645, 311.767, 10500309, 1568.502, 5.031
-random, 31240.951, 4.666, 156236, 23.337, 5.001
+append, 672175.964, 100.417, 3361552, 502.188, 5.001
+stream, 1276215.641, 190.656, 3361552, 502.188, 2.634
+stream no cache, 1355464.516, 202.495, 3361552, 502.188, 2.48
+stream10, 2046797.202, 305.777, 10244220, 1530.418, 5.005
+random, 21936.533, 3.277, 110604, 16.522, 5.042
 
 flumelog aligned offset:
 
@@ -74,7 +74,6 @@ random, 28774.712, 4.298, 287891, 43.008, 10.005
 
 To run the benchmarks the small `bench-flumelog.patch` needs to be
 applied.
-
 
 [flumelog-aligned-offset]: https://github.com/flumedb/flumelog-aligned-offset/
 [flumelog-offset]: https://github.com/flumedb/flumelog-offset/

@@ -12,7 +12,7 @@
     "hashlru": "^2.3.0",
     "lodash.debounce": "^4.0.8",
     "ltgt": "^2.2.1",
-    "obv": "0.0.1",
+    "obz": "^1.0.2",
     "polyraf": "^1.1.0",
     "push-stream": "^11.0.0",
     "push-stream-to-pull-stream": "^1.0.3"
@@ -24,7 +24,7 @@
     "flumedb": "^2.1.8",
     "flumeview-level": "^4.0.4",
     "pull-stream": "^3.6.14",
-    "tape": "^4.9.1",
+    "tape": "^5.0.1",
     "test-flumeview-index": "^2.3.1"
   },
   "scripts": {

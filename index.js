@@ -1,6 +1,6 @@
 const Cache = require('hashlru')
 const RAF = require('polyraf')
-const Obv = require('obv')
+const Obv = require('obz')
 const debounce = require('lodash.debounce')
 const debug = require('debug')("async-flumelog")
 
@@ -64,6 +64,10 @@ module.exports = function (filename, opts) {
     return (offset - getRecordOffset(offset)) / blockSize
   }
 
+  function getNextBlockIndex(offset) {
+    return (getBlockIndex(offset) + 1) * blockSize
+  }
+
   function getLastRecord(buffer) {
     for (var i = 0, lastOk = 0; i < buffer.length;) {
       var length = buffer.readUInt16LE(i)
@@ -85,7 +89,9 @@ module.exports = function (filename, opts) {
     var cachedBlock = cache.get(blockIndex)
     if (cachedBlock) {
       debug("getting offset %d from cache", offset)
-      cb(null, cachedBlock)
+      // we use setImmediate to avoid the stack blowing up
+      // FIXME: this slows down stream, need a better way
+      setImmediate(() => cb(null, cachedBlock))
     } else {
       debug("getting offset %d from disc", offset)
       raf.read(blockStart, blockSize, (err, buffer) => {
@@ -115,27 +121,28 @@ module.exports = function (filename, opts) {
     })
   }
 
-  // stream skips deleted stuff
-  function getDataNextOffset(buffer, recordOffset, blockIndex) {
-    var length = buffer.readUInt16LE(recordOffset)
-    var data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
+  // nextOffset can take 3 values:
+  // -1: end of stream
+  //  0: need a new block
+  // >0: next record within block
+  function getDataNextOffset(buffer, offset) {
+    const recordOffset = getRecordOffset(offset)
+    const blockIndex = getBlockIndex(offset)
 
-    var nextLength = buffer.readUInt16LE(recordOffset + 2 + length)
-    var nextOffset = nextLength != 0 ? recordOffset + 2 + length + blockIndex * blockSize : (blockIndex + 1) * blockSize
-    if (nextOffset > since.value)
+    const length = buffer.readUInt16LE(recordOffset)
+    const data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
+
+    const nextLength = buffer.readUInt16LE(recordOffset + 2 + length)
+    let nextOffset = recordOffset + 2 + length + blockIndex * blockSize
+    if (nextLength == 0 && getNextBlockIndex(offset) > since.value)
       nextOffset = -1
+    else if (nextLength == 0)
+      nextOffset = 0
 
     if (data.every(x => x === 0))
       return [nextOffset, null]
     else
       return [nextOffset, codec.decode(data)]
-  }
-
-  function getNext(offset, cb) {
-    getBlock(offset, (err, buffer) => {
-      if (err) return cb(err)
-      cb(null, getDataNextOffset(buffer, getRecordOffset(offset), getBlockIndex(offset)))
-    })
   }
   
   function del(offset, cb)
@@ -220,7 +227,8 @@ module.exports = function (filename, opts) {
           throw err
         } else {
           debug("wrote block %d", blockIndex)
-          since.set(fileOffset)
+          if (fileOffset > since.value)
+            since.set(fileOffset)
 
           // write values to live streams
           self.streams.forEach(stream => {
@@ -283,7 +291,9 @@ module.exports = function (filename, opts) {
     filename,
 
     // streaming
-    getNext,
+    getNextBlockIndex,
+    getDataNextOffset,
+    getBlock,
     stream: function (opts) {
       var stream = new Stream(self, opts)
       self.streams.push(stream)

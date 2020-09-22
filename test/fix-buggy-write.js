@@ -36,9 +36,8 @@ tape('simple', function (t) {
       db.onDrain(() => {
         db.stream({seqs: false}).pipe(collect(function (err, ary) {
           t.deepEqual(ary, [v1, v2])
-          //console.log(ary)
+          t.end()
         }))
-        t.end()
       })
     })
   })
@@ -53,8 +52,7 @@ tape('simple reread', function (t) {
   db.onReady(() => {
     db.stream({seqs: false}).pipe(collect(function (err, ary) {
       t.deepEqual(ary, [v1, v2])
+      t.end()
     }))
-
-    t.end()
   })
 })
