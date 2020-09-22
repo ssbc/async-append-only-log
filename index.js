@@ -90,7 +90,6 @@ module.exports = function (filename, opts) {
     if (cachedBlock) {
       debug("getting offset %d from cache", offset)
       // we use setImmediate to avoid the stack blowing up
-      // FIXME: this slows down stream, need a better way
       setImmediate(() => cb(null, cachedBlock))
     } else {
       debug("getting offset %d from disc", offset)
@@ -213,44 +212,45 @@ module.exports = function (filename, opts) {
 
   scheduleWrite = debounce(write, writeTimeout)
 
+  function writeBlock(blockIndex) {
+    const { block, fileOffset } = blocksToBeWritten[blockIndex]
+    delete blocksToBeWritten[blockIndex]
+    debug("writing block of size: %d, to offset: %d",
+          block.length, blockIndex * blockSize)
+    raf.write(blockIndex * blockSize, block, (err) => {
+      if (err) {
+        debug("failed to write block %d", blockIndex)
+        throw err
+      } else {
+        since.set(fileOffset)
+
+        // write values to live streams
+        self.streams.forEach(stream => {
+          if (!stream.ended && stream.live && !stream.writing) {
+            if (stream.cursor === -1)
+              stream.cursor = 0
+            else
+              stream.cursor = getNextBlockIndex(stream.cursor)
+
+            stream.writing = true
+            stream.resume()
+          }
+        })
+
+        var l = waitingDrain.length
+        for (var i = 0; i < l; ++i)
+          waitingDrain[i]()
+        waitingDrain = waitingDrain.slice(l)
+
+        write() // next!
+      }
+    })
+  }
+
   function write() {
-    for (var bi in blocksToBeWritten)
-    {
-      const blockIndex = bi
-      const { block, fileOffset } = blocksToBeWritten[blockIndex]
-      delete blocksToBeWritten[blockIndex]
-      debug("writing block of size: %d, to offset: %d",
-            block.length, blockIndex * blockSize)
-      raf.write(blockIndex * blockSize, block, (err) => {
-        if (err) {
-          debug("failed to write block %d", blockIndex)
-          throw err
-        } else {
-          debug("wrote block %d", blockIndex)
-          if (fileOffset > since.value)
-            since.set(fileOffset)
-
-          // write values to live streams
-          self.streams.forEach(stream => {
-            if (!stream.ended && stream.live && !stream.writing) {
-              if (stream.cursor === -1) {
-                stream.cursor = 0
-              } else {
-                var next = getDataNextOffset(block, getRecordOffset(stream.cursor), blockIndex)
-                stream.cursor = next[0]
-                stream.writing = true
-              }
-
-              stream.resume()
-            }
-          })
-
-          var l = waitingDrain.length
-          for (var i = 0; i < l; ++i)
-            waitingDrain[i]()
-          waitingDrain = waitingDrain.slice(l)
-        }
-      })
+    for (var blockIndex in blocksToBeWritten) {
+      writeBlock(blockIndex)
+      return // just one at a time
     }
   }
 

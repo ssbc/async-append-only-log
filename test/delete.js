@@ -38,7 +38,7 @@ tape('simple', function (t) {
                   t.ok(err)
                   t.equal(err.message, 'item has been deleted')
                   // write changes
-                  db.close(t.end)
+                  db.onDrain(t.end)
                 })
               })
             })
