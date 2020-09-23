@@ -15,6 +15,7 @@ module.exports = function (filename, opts) {
   var blockSize = opts && opts.blockSize || 65536
   var codec = opts && opts.codec || _codec
   var writeTimeout = opts && opts.writeTimeout || 250
+  var self
 
   // offset of last written record
   var since = Obv()
