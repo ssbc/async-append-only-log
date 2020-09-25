@@ -29,8 +29,8 @@ module.exports = function (filename, opts) {
 
   raf.stat(function (_, stat) {
     var len = stat ? stat.size : -1
-    
-    if (len == -1) {
+
+    if (len <= 0) {
       debug("empty file")
       latestBlock = Buffer.alloc(blockSize)
       latestBlockIndex = 0
