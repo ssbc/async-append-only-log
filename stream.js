@@ -100,7 +100,11 @@ Stream.prototype.resume = function () {
 
   this.writing = true
   this.blocks.getBlock(this.cursor, (err, block) => {
-    if (err) return err
+    if (err) {
+      console.error(err)
+      return
+    }
+
     if (this._handleBlock(block)) {
       this.cursor = this.blocks.getNextBlockIndex(this.cursor)
       this.resume()
