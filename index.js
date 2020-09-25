@@ -230,7 +230,7 @@ module.exports = function (filename, opts) {
           if (!stream.ended && stream.live && !stream.writing) {
             if (stream.cursor === -1)
               stream.cursor = 0
-            else
+            else if (getNextBlockIndex(stream.cursor) < since.value)
               stream.cursor = getNextBlockIndex(stream.cursor)
 
             stream.writing = true
