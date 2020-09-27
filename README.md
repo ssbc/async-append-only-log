@@ -37,9 +37,9 @@ values that have not been written to disk yet.
 
 Running [bench-flumelog] reveals the following numbers. Async flumelog
 is faster in all tests except random, where flumelog aligned offset is
-a lot faster. Append is very slow for flumelog-aligned-offset because
-it writes every message synchronously. The most important numbers are
-append (used for onboarding) and stream (used for building indexes).
+a lot faster. The `append` test is very slow for flumelog-aligned-offset
+because it writes every message synchronously. The most important numbers 
+are append (used for onboarding) and stream (used for building indexes).
 
 ```
 async flumelog:
