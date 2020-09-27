@@ -15,6 +15,7 @@ function Stream (blocks, opts) {
   this.count = 0
   this.writing = false
   this.ended = false
+  this.skipFirst = false
 
   var self = this
   this.opts = opts
@@ -34,6 +35,9 @@ Stream.prototype._ready = function () {
   this.cursor = ltgt.lowerBound(this.opts, 0)
 
   if (this.cursor < 0) this.cursor = 0
+
+  if (this.opts.gt)
+    this.skipFirst = true
 
   if (!this.live && this.cursor === 0 && this.blocks.since.value == -1)
     this.ended = true
@@ -60,6 +64,21 @@ Stream.prototype._handleBlock = function(block) {
   while (true) {
     const result = this.blocks.getDataNextOffset(block, this.cursor)
     const o = this.cursor
+
+    if (this.skipFirst) {
+      this.skipFirst = false
+
+      if (result[0] > 0) {
+        this.cursor = result[0]
+        continue
+      } else if (result[0] == 0) {
+        return true // get next block
+      } else if (result[0] == -1) {
+        if (this.live === true)
+          this.writing = false
+        return false
+      }
+    }
 
     this.count++
 

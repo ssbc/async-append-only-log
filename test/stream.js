@@ -114,3 +114,11 @@ tape('gte', function (t) {
     t.end()
   }))
 })
+
+tape('gt', function (t) {
+  log.stream({seqs: false, gt: 12}).pipe(collect(function (err, ary) {
+    t.notOk(err)
+    t.deepEqual(ary, [v3])
+    t.end()
+  }))
+})
