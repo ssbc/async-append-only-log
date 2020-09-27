@@ -1,7 +1,5 @@
 # Async flumelog
 
-Status: very early WIP. Don't use this for anything
-
 This module is heavily inspired by [flumelog-aligned-offset]. It is an
 attempt to write something simpler that is easier to reason
 about. Flumelog is the lowest part of the SSB stack, so it should
