@@ -2,10 +2,10 @@
   "name": "async-flumelog",
   "description": "An async flumelog",
   "version": "1.0.3",
-  "homepage": "https://github.com/arj03/async-flumelog",
+  "homepage": "https://github.com/flumedb/async-flumelog",
   "repository": {
     "type": "git",
-    "url": "https://github.com/arj03/async-flumelog"
+    "url": "https://github.com/flumedb/async-flumelog"
   },
   "dependencies": {
     "debug": "^4.2.0",
