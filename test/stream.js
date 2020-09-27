@@ -122,3 +122,19 @@ tape('gt', function (t) {
     t.end()
   }))
 })
+
+tape('gt', function (t) {
+  log.stream({seqs: false, gt: 0}).pipe(collect(function (err, ary) {
+    t.notOk(err)
+    t.deepEqual(ary, [v2, v3])
+    t.end()
+  }))
+})
+
+tape('gt -1', function (t) {
+  log.stream({seqs: false, gt: -1}).pipe(collect(function (err, ary) {
+    t.notOk(err)
+    t.deepEqual(ary, [v1, v2, v3])
+    t.end()
+  }))
+})

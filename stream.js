@@ -36,7 +36,7 @@ Stream.prototype._ready = function () {
 
   if (this.cursor < 0) this.cursor = 0
 
-  if (this.opts.gt)
+  if (this.opts.gt >= 0)
     this.skipFirst = true
 
   if (!this.live && this.cursor === 0 && this.blocks.since.value == -1)
