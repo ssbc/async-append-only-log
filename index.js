@@ -211,7 +211,7 @@ module.exports = function (filename, opts) {
       cb(null, appendSingle(data))
   }
 
-  scheduleWrite = debounce(write, writeTimeout)
+  var scheduleWrite = debounce(write, writeTimeout)
 
   function writeBlock(blockIndex) {
     const { block, fileOffset } = blocksToBeWritten[blockIndex]
