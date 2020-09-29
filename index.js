@@ -230,8 +230,8 @@ module.exports = function (filename, opts) {
           if (!stream.ended && stream.live && !stream.writing) {
             if (stream.cursor === -1)
               stream.cursor = 0
-            else if (getNextBlockIndex(stream.cursor) < since.value)
-              stream.cursor = getNextBlockIndex(stream.cursor)
+            else // the cursor still at last position
+              stream.skipFirst = true
 
             stream.writing = true
             stream.resume()

@@ -138,3 +138,41 @@ tape('gt -1', function (t) {
     t.end()
   }))
 })
+
+tape('live gt', function (t) {
+  var v4 = B(0x40, 40)
+  var sink = collect(function () {
+    throw new Error('live stream should not end')
+  })
+  log.stream({ live: true, seqs: false, gt: 10 + 2 + 20 + 2 }).pipe(sink)
+  log.append(v4, function (err) {})
+  log.onDrain(() => {
+    // need to wait for stream to get changes from save
+    setTimeout(() => {
+      t.deepEqual(sink.array, [v4])
+      t.end()
+    }, 200)
+  })
+})
+
+tape('double live', function (t) {
+  const filename = '/tmp/dsf-test-stream-2.log'
+
+  try { fs.unlinkSync(filename) } catch (_) {}
+  var log = Log(filename, {blockSize: 64*1024})
+
+  var i = 0
+
+  log.stream({ live: true, seqs: false }).pipe({
+    paused: false,
+    write: function (data) {
+      if (i == 0) {
+        log.append(B(0x20, 20), function (err) {})
+        ++i
+      } else
+        t.end()
+    }
+  })
+
+  log.append(B(0x10, 10), function (err) {})
+})
