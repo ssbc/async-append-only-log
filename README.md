@@ -73,6 +73,10 @@ random, 28774.712, 4.298, 287891, 43.008, 10.005
 To run the benchmarks the small `bench-flumelog.patch` needs to be
 applied.
 
+[JITDB] results for more real world benchmarks are available as [jitdb-results].
+
 [flumelog-aligned-offset]: https://github.com/flumedb/flumelog-aligned-offset/
 [flumelog-offset]: https://github.com/flumedb/flumelog-offset/
 [bench-flumelog]: https://github.com/flumedb/bench-flumelog
+[JITDB]: https://github.com/arj03/jitdb/
+[jitdb-results]: https://github.com/arj03/jitdb/blob/master/bench.txt
