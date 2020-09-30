@@ -1,35 +1,37 @@
 # Async flumelog
 
 This module is heavily inspired by [flumelog-aligned-offset]. It is an
-attempt to write something simpler that is easier to reason
-about. Flumelog is the lowest part of the SSB stack, so it should
+attempt to implement the same concept but in a simpler fashion,
+making it easier to reason about the code.
+Flumelog is the lowest part of the SSB stack, so it should
 extremly stable while still maintaining good performance.
 
-An async flumelog consists of a number of blocks, that contain a
-number of records. The records are simply length + data. A record must
-be in one and only one block, which means there probably will be some
-empty space at the end of a block. Blocks are always written in full.
+An async flumelog consists of a number of `blocks`, that contain a
+number of `record`s. A `record` is simply it's `length`, as a 16-bit unsigned integer,
+followed by the `data` bytes. A record must be in one and only one block,
+which means there probably will be some empty space at the end of a block.
+Blocks are always written in full.
 
 ```
 <block>
   <record
-    <record.length: UInt16LE>
-    <record.data>
+    <length: UInt16LE>
+    <data: Bytes>
   </record>*
 </block>*
 ```
 
-Contrasting to flumelog-aligned-offset there is no length after the
-data in a record and no pointer at the end of a block. These were to
-be able to run the log in reverse, but I have never seen the need for
+In contrast to flumelog-aligned-offset there is no additional `length` after the
+`data` in a `record` and no pointer at the end of a `block`. These were there to
+be able to iterate over the log in reverse, but I have never seen the need for
 that.
 
 Writing to the log is always async. Note this is different from
-[flumelog-offset] and [flumelog-aligned-offfset]. The since observable
-will be updated once the data is written. `onDrain` can be used to
+[flumelog-offset] and [flumelog-aligned-offfset]. The `since` observable
+will be updated once the data is written. The `onDrain` callback can be used to
 know when data has been written if needed. Streaming will only emit
 values that have been written to storage. This is to ensure that a
-view will never to ahead of the main log and thus end up in a bad
+view will never get ahead of the main log and thus end up in a bad
 state if the system crashes before data is written. `get` will return
 values that have not been written to disk yet.
 
