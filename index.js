@@ -90,8 +90,7 @@ module.exports = function (filename, opts) {
     var cachedBlock = cache.get(blockIndex)
     if (cachedBlock) {
       debug("getting offset %d from cache", offset)
-      // we use setImmediate to avoid the stack blowing up
-      setImmediate(() => cb(null, cachedBlock))
+      cb(null, cachedBlock)
     } else {
       debug("getting offset %d from disc", offset)
       raf.read(blockStart, blockSize, (err, buffer) => {

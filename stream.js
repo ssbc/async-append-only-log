@@ -1,4 +1,6 @@
 var ltgt = require('ltgt')
+var looper = require('looper')
+
 module.exports = Stream
 
 function Stream (blocks, opts) {
@@ -105,7 +107,7 @@ Stream.prototype._handleBlock = function(block) {
   }
 }
 
-Stream.prototype.resume = function () {
+Stream.prototype._resume = function () {
   if (!this.sink || this.sink.paused) return
 
   if (this.ended && !this.sink.ended)
@@ -126,11 +128,16 @@ Stream.prototype.resume = function () {
 
     if (this._handleBlock(block)) {
       this.cursor = this.blocks.getNextBlockIndex(this.cursor)
-      this.resume()
+      this._next()
     }
     else if (this.live !== true)
       this.abort()
   })
+}
+
+Stream.prototype.resume = function () {
+  this._next = looper(this._resume.bind(this))
+  this._next()
 }
 
 Stream.prototype.abort = function (err) {
