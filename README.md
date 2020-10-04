@@ -38,29 +38,21 @@ values that have not been written to disk yet.
 ## Benchmarks
 
 Running [bench-flumelog] reveals the following numbers. Async flumelog
-is faster in all tests except random, where flumelog aligned offset is
-a lot faster. The `append` test is very slow for flumelog-aligned-offset
-because it writes every message synchronously. The most important numbers 
-are append (used for onboarding) and stream (used for building indexes).
+is faster that regular flumelog-offset in all categories. The most
+important numbers are append (used for onboarding) and stream (used
+for building indexes). Flumelog-aligned-offset is not included in the
+benchmarks, as it writes every message synchronously rendering the
+results invalid.
 
 ```
 async flumelog:
 
 name, ops/second, mb/second, ops, total-mb, seconds
-append, 672175.964, 100.417, 3361552, 502.188, 5.001
-stream, 1276215.641, 190.656, 3361552, 502.188, 2.634
-stream no cache, 1355464.516, 202.495, 3361552, 502.188, 2.48
-stream10, 2046797.202, 305.777, 10244220, 1530.418, 5.005
-random, 21936.533, 3.277, 110604, 16.522, 5.042
-
-flumelog aligned offset:
-
-name, ops/second, mb/second, ops, total-mb, seconds
-append, 769.2, 0.114, 3856, 0.576, 5.013
-stream, 128533.333, 19.207, 3856, 0.576, 0.03
-stream no cache, 124387.096, 18.587, 3856, 0.576, 0.031
-stream10, 428444.444, 64.023, 38560, 5.762, 0.09
-random, 907996.6, 135.684, 4540891, 678.556, 5.001
+append, 923964.807, 138.002, 4620748, 690.149, 5.001
+stream, 1059075.865, 158.182, 4620748, 690.149, 4.363
+stream no cache, 1102803.818, 164.713, 4620748, 690.149, 4.19
+stream10, 2540947.641, 379.51, 12714902, 1899.068, 5.004
+random, 39715.656, 5.931, 198618, 29.664, 5.001
 
 flumelog offset:
 
