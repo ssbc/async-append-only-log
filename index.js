@@ -27,7 +27,9 @@ module.exports = function (filename, opts) {
   var latestBlockIndex = null
   var nextWriteBlockOffset = null
 
-  raf.stat(function (_, stat) {
+  raf.stat(function (err, stat) {
+    if (err) console.error("failed to stat " + filename, err)
+
     var len = stat ? stat.size : -1
 
     if (len <= 0) {
