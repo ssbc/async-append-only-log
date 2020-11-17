@@ -32,5 +32,6 @@
     "test": "set -e; for t in test/*.js; do node $t; done"
   },
   "author": "Anders Rune Jensen <arj03@protonmail.ch>",
-  "license": "Beerware"
+  "contributors": ["Andre Staltz <contact@staltz.com>"],
+  "license": "LGPL-3.0"
 }
