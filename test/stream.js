@@ -72,13 +72,15 @@ tape('second', function (t) {
 
 var v3 = B(0x30, 30)
 tape('live', function (t) {
-  var sink = collect(function () {
-    throw new Error('live stream should not end')
+  var sink = collect(function (err) {
+    if (err === 'tape-ended') return
+    else throw new Error('live stream should not end')
   })
   log.stream({live: true, seqs: false}).pipe(sink)
   log.append(v3, function (err) {})
   log.onDrain(function () {
     t.deepEqual(sink.array, [v1, v2, v3])
+    sink.end('tape-ended')
     t.end()
   })
 })
@@ -141,8 +143,9 @@ tape('gt -1', function (t) {
 
 tape('live gt', function (t) {
   var v4 = B(0x40, 40)
-  var sink = collect(function () {
-    throw new Error('live stream should not end')
+  var sink = collect(function (err) {
+    if (err === 'tape-ended') return
+    else throw new Error('live stream should not end')
   })
   log.stream({ live: true, seqs: false, gt: 10 + 2 + 20 + 2 }).pipe(sink)
   log.append(v4, function (err) {})
@@ -150,6 +153,7 @@ tape('live gt', function (t) {
     // need to wait for stream to get changes from save
     setTimeout(() => {
       t.deepEqual(sink.array, [v4])
+      sink.end('tape-ended')
       t.end()
     }, 200)
   })
@@ -175,4 +179,14 @@ tape('double live', function (t) {
   })
 
   log.append(B(0x10, 10), function (err) {})
+})
+
+tape('close', function (t) {
+  log.stream({seqs: false}).pipe({
+    paused: false,
+    write: function () { },
+  })
+  log.close(() => {
+    t.end()
+  })
 })

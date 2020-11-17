@@ -146,7 +146,7 @@ Stream.prototype.abort = function (err) {
   this.ended = err || true
   var i = this.blocks.streams.indexOf(this)
   if (~i) this.blocks.streams.splice(i, 1)
-  if (!this.sink.ended)
+  if (!this.sink.ended && this.sink.end)
     this.sink.end(err === true ? null : err)
 }
 
