@@ -218,6 +218,9 @@ module.exports = function (filename, opts) {
   function writeBlock(blockIndex) {
     const { block, fileOffset } = blocksToBeWritten[blockIndex]
     delete blocksToBeWritten[blockIndex]
+    let wd = waitingDrain[blockIndex] || []
+    const drain = wd.slice(0)
+
     debug("writing block of size: %d, to offset: %d",
           block.length, blockIndex * blockSize)
     raf.write(blockIndex * blockSize, block, (err) => {
@@ -240,20 +243,15 @@ module.exports = function (filename, opts) {
           }
         })
 
-        function drainForBlockIndex(bi) {
-          let drainlist = waitingDrain[bi] || []
-          var l = drainlist.length
-          for (var i = 0; i < l; ++i)
-            drainlist[i]()
+        debug("draining the waiting queue for %d, items: %d", blockIndex, drain.length)
+        for (var i = 0; i < drain.length; ++i)
+          drain[i]()
 
-          let drainlistAfter = waitingDrain[bi] || []
-          if (l == drainlistAfter.length)
-            delete waitingDrain[bi]
-          else
-            drainForBlockIndex(bi)
-        }
-
-        drainForBlockIndex(blockIndex)
+        let drainsAfter = waitingDrain[blockIndex] || []
+        if (drain.length == drainsAfter.length)
+          delete waitingDrain[blockIndex]
+        else
+          waitingDrain[blockIndex] = waitingDrain[blockIndex].slice(drain.length)
 
         write() // next!
       }
