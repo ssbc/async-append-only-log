@@ -20,7 +20,8 @@ module.exports = function (filename, opts) {
   // offset of last written record
   var since = Obv()
 
-  var waiting = [], waitingDrain = []
+  var waiting = []
+  var waitingDrain = {} // blockIndex -> []
   var blocksToBeWritten = new Map() // blockIndex -> { block, fileOffset }
 
   var latestBlock = null
@@ -217,6 +218,8 @@ module.exports = function (filename, opts) {
   function writeBlock(blockIndex) {
     const { block, fileOffset } = blocksToBeWritten[blockIndex]
     delete blocksToBeWritten[blockIndex]
+    const drainsBefore = (waitingDrain[blockIndex] || []).slice(0)
+
     debug("writing block of size: %d, to offset: %d",
           block.length, blockIndex * blockSize)
     raf.write(blockIndex * blockSize, block, (err) => {
@@ -239,10 +242,15 @@ module.exports = function (filename, opts) {
           }
         })
 
-        var l = waitingDrain.length
-        for (var i = 0; i < l; ++i)
-          waitingDrain[i]()
-        waitingDrain = waitingDrain.slice(l)
+        debug("draining the waiting queue for %d, items: %d", blockIndex, drainsBefore.length)
+        for (var i = 0; i < drainsBefore.length; ++i)
+          drainsBefore[i]()
+
+        let drainsAfter = waitingDrain[blockIndex] || []
+        if (drainsBefore.length == drainsAfter.length)
+          delete waitingDrain[blockIndex]
+        else
+          waitingDrain[blockIndex] = waitingDrain[blockIndex].slice(drainsBefore.length)
 
         write() // next!
       }
@@ -286,8 +294,14 @@ module.exports = function (filename, opts) {
     onReady,
 
     onDrain: onLoad(function (fn) {
-      if (Object.keys(blocksToBeWritten).length == 0) fn()
-      else waitingDrain.push(fn)
+      let blockIndexes = Object.keys(blocksToBeWritten)
+      if (blockIndexes.length == 0) fn()
+      else {
+        const latestBlockIndex = blockIndexes[blockIndexes.length-1]
+        const drains = waitingDrain[latestBlockIndex] || []
+        drains.push(fn)
+        waitingDrain[latestBlockIndex] = drains
+      }
     }),
 
     filename,
