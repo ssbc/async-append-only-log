@@ -218,8 +218,7 @@ module.exports = function (filename, opts) {
   function writeBlock(blockIndex) {
     const { block, fileOffset } = blocksToBeWritten[blockIndex]
     delete blocksToBeWritten[blockIndex]
-    let wd = waitingDrain[blockIndex] || []
-    const drain = wd.slice(0)
+    const drainsBefore = (waitingDrain[blockIndex] || []).slice(0)
 
     debug("writing block of size: %d, to offset: %d",
           block.length, blockIndex * blockSize)
@@ -243,15 +242,15 @@ module.exports = function (filename, opts) {
           }
         })
 
-        debug("draining the waiting queue for %d, items: %d", blockIndex, drain.length)
-        for (var i = 0; i < drain.length; ++i)
-          drain[i]()
+        debug("draining the waiting queue for %d, items: %d", blockIndex, drainsBefore.length)
+        for (var i = 0; i < drainsBefore.length; ++i)
+          drainsBefore[i]()
 
         let drainsAfter = waitingDrain[blockIndex] || []
-        if (drain.length == drainsAfter.length)
+        if (drainsBefore.length == drainsAfter.length)
           delete waitingDrain[blockIndex]
         else
-          waitingDrain[blockIndex] = waitingDrain[blockIndex].slice(drain.length)
+          waitingDrain[blockIndex] = waitingDrain[blockIndex].slice(drainsBefore.length)
 
         write() // next!
       }
@@ -299,7 +298,7 @@ module.exports = function (filename, opts) {
       if (blockIndexes.length == 0) fn()
       else {
         const latestBlockIndex = blockIndexes[blockIndexes.length-1]
-        let drains = waitingDrain[latestBlockIndex] || []
+        const drains = waitingDrain[latestBlockIndex] || []
         drains.push(fn)
         waitingDrain[latestBlockIndex] = drains
       }
