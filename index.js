@@ -20,7 +20,8 @@ module.exports = function (filename, opts) {
   // offset of last written record
   var since = Obv()
 
-  var waiting = [], waitingDrain = []
+  var waiting = []
+  var waitingDrain = {} // blockIndex -> []
   var blocksToBeWritten = new Map() // blockIndex -> { block, fileOffset }
 
   var latestBlock = null
@@ -239,10 +240,20 @@ module.exports = function (filename, opts) {
           }
         })
 
-        var l = waitingDrain.length
-        for (var i = 0; i < l; ++i)
-          waitingDrain[i]()
-        waitingDrain = waitingDrain.slice(l)
+        function drainForBlockIndex(bi) {
+          let drainlist = waitingDrain[bi] || []
+          var l = drainlist.length
+          for (var i = 0; i < l; ++i)
+            drainlist[i]()
+
+          let drainlistAfter = waitingDrain[bi] || []
+          if (l == drainlistAfter.length)
+            delete waitingDrain[bi]
+          else
+            drainForBlockIndex(bi)
+        }
+
+        drainForBlockIndex(blockIndex)
 
         write() // next!
       }
@@ -286,8 +297,14 @@ module.exports = function (filename, opts) {
     onReady,
 
     onDrain: onLoad(function (fn) {
-      if (Object.keys(blocksToBeWritten).length == 0) fn()
-      else waitingDrain.push(fn)
+      let blockIndexes = Object.keys(blocksToBeWritten)
+      if (blockIndexes.length == 0) fn()
+      else {
+        const latestBlockIndex = blockIndexes[blockIndexes.length-1]
+        let drains = waitingDrain[latestBlockIndex] || []
+        drains.push(fn)
+        waitingDrain[latestBlockIndex] = drains
+      }
     }),
 
     filename,
