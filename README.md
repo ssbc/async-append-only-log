@@ -27,7 +27,7 @@ be able to iterate over the log in reverse, but I have never seen the need for
 that.
 
 Writing to the log is always async. Note this is different from
-[flumelog-offset] and [flumelog-aligned-offfset]. The `since` observable
+[flumelog-offset] and [flumelog-aligned-offset]. The `since` observable
 will be updated once the data is written. The `onDrain` callback can be used to
 know when data has been written if needed. Streaming will only emit
 values that have been written to storage. This is to ensure that a
