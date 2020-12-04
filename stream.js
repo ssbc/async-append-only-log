@@ -110,8 +110,12 @@ Stream.prototype._handleBlock = function(block) {
 Stream.prototype._resume = function () {
   if (!this.sink || this.sink.paused) return
 
-  if (this.ended && !this.sink.ended)
-    return this.sink.end(this.ended === true ? null : this.ended)
+  if (this.ended && !this.sink.ended) {
+    if (this.ended === true && !this.live)
+      return this.abort()
+    else
+      return this.sink.end(this.ended === true ? null : this.ended)
+  }
 
   if (this.cursor === -1)
     return // not ready yet

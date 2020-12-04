@@ -76,11 +76,13 @@ tape('live', function (t) {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
-  log.stream({live: true, seqs: false}).pipe(sink)
+  let ls = log.stream({live: true, seqs: false})
+  ls.pipe(sink)
   log.append(v3, function (err) {})
   log.onDrain(function () {
     t.deepEqual(sink.array, [v1, v2, v3])
     sink.end('tape-ended')
+    ls.abort()
     t.end()
   })
 })
@@ -147,13 +149,15 @@ tape('live gt', function (t) {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
-  log.stream({ live: true, seqs: false, gt: 10 + 2 + 20 + 2 }).pipe(sink)
+  let ls = log.stream({ live: true, seqs: false, gt: 10 + 2 + 20 + 2 })
+  ls.pipe(sink)
   log.append(v4, function (err) {})
   log.onDrain(() => {
     // need to wait for stream to get changes from save
     setTimeout(() => {
       t.deepEqual(sink.array, [v4])
       sink.end('tape-ended')
+      ls.abort()
       t.end()
     }, 200)
   })
@@ -182,11 +186,13 @@ tape('double live', function (t) {
 })
 
 tape('close', function (t) {
+  t.equal(log.streams.length, 0, 'no open streams')
   log.stream({seqs: false}).pipe({
     paused: false,
-    write: function () { },
+    write: function () {},
+    end: function() {
+      t.end()
+    }
   })
-  log.close(() => {
-    t.end()
-  })
+  log.close(() => {})
 })
