@@ -21,8 +21,8 @@ module.exports = function (filename, opts) {
   var since = Obv()
 
   var waiting = []
-  var waitingDrain = {} // blockIndex -> []
-  var blocksToBeWritten = new Map() // blockIndex -> { block, fileOffset }
+  const waitingDrain = new Map() // blockIndex -> []
+  const blocksToBeWritten = new Map() // blockIndex -> { block, fileOffset }
 
   var latestBlock = null
   var latestBlockIndex = null
@@ -44,7 +44,7 @@ module.exports = function (filename, opts) {
     } else {
       raf.read(len - blockSize, blockSize, (err, buffer) => {
         if (err) throw err
-        
+
         var recordOffset = getLastRecord(buffer, 0)
         since.set(len - blockSize + recordOffset)
 
@@ -85,7 +85,7 @@ module.exports = function (filename, opts) {
 
     return lastOk
   }
-  
+
   function getBlock(offset, cb) {
     var blockStart = offset - getRecordOffset(offset)
     var blockIndex = blockStart / blockSize
@@ -146,7 +146,7 @@ module.exports = function (filename, opts) {
     else
       return [nextOffset, codec.decode(data)]
   }
-  
+
   function del(offset, cb)
   {
     getBlock(offset, (err, buffer) => {
@@ -190,12 +190,12 @@ module.exports = function (filename, opts) {
       nextWriteBlockOffset = 0
       debug("data doesn't fit current block, creating new")
     }
-    
+
     appendFrame(latestBlock, encodedData, nextWriteBlockOffset)
     cache.set(latestBlockIndex, latestBlock) // update cache
     const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
     nextWriteBlockOffset += frameSize(encodedData)
-    blocksToBeWritten[latestBlockIndex] = { block: latestBlock, fileOffset }
+    blocksToBeWritten.set(latestBlockIndex, { block: latestBlock, fileOffset })
     scheduleWrite()
     debug("data inserted at offset %d", fileOffset)
     return fileOffset
@@ -216,9 +216,10 @@ module.exports = function (filename, opts) {
   var scheduleWrite = debounce(write, writeTimeout)
 
   function writeBlock(blockIndex) {
-    const { block, fileOffset } = blocksToBeWritten[blockIndex]
-    delete blocksToBeWritten[blockIndex]
-    const drainsBefore = (waitingDrain[blockIndex] || []).slice(0)
+    if (!blocksToBeWritten.has(blockIndex)) return
+    const { block, fileOffset } = blocksToBeWritten.get(blockIndex)
+    blocksToBeWritten.delete(blockIndex)
+    const drainsBefore = (waitingDrain.get(blockIndex) || []).slice(0)
 
     debug("writing block of size: %d, to offset: %d",
           block.length, blockIndex * blockSize)
@@ -246,11 +247,11 @@ module.exports = function (filename, opts) {
         for (var i = 0; i < drainsBefore.length; ++i)
           drainsBefore[i]()
 
-        let drainsAfter = waitingDrain[blockIndex] || []
+        let drainsAfter = waitingDrain.get(blockIndex) || []
         if (drainsBefore.length == drainsAfter.length)
-          delete waitingDrain[blockIndex]
+          waitingDrain.delete(blockIndex)
         else
-          waitingDrain[blockIndex] = waitingDrain[blockIndex].slice(drainsBefore.length)
+          waitingDrain.set(blockIndex, waitingDrain.get(blockIndex).slice(drainsBefore.length))
 
         write() // next!
       }
@@ -258,7 +259,7 @@ module.exports = function (filename, opts) {
   }
 
   function write() {
-    for (var blockIndex in blocksToBeWritten) {
+    for (var blockIndex of blocksToBeWritten.keys()) {
       writeBlock(blockIndex)
       return // just one at a time
     }
@@ -271,7 +272,7 @@ module.exports = function (filename, opts) {
       raf.close(cb)
     })
   }
-  
+
   function onLoad (fn) {
     return function (arg, cb) {
       if (latestBlock === null)
@@ -284,7 +285,13 @@ module.exports = function (filename, opts) {
     if (latestBlock != null) fn()
     else waiting.push(fn)
   }
-  
+
+  function last(iterable) {
+    let res = null
+    for (let x of iterable) res = x
+    return res
+  }
+
   return self = {
     get: onLoad(get),
     del: onLoad(del),
@@ -294,13 +301,12 @@ module.exports = function (filename, opts) {
     onReady,
 
     onDrain: onLoad(function (fn) {
-      let blockIndexes = Object.keys(blocksToBeWritten)
-      if (blockIndexes.length == 0) fn()
+      if (blocksToBeWritten.size === 0) fn()
       else {
-        const latestBlockIndex = blockIndexes[blockIndexes.length-1]
-        const drains = waitingDrain[latestBlockIndex] || []
+        const latestBlockIndex = last(blocksToBeWritten.keys())
+        const drains = waitingDrain.get(latestBlockIndex) || []
         drains.push(fn)
-        waitingDrain[latestBlockIndex] = drains
+        waitingDrain.set(latestBlockIndex, drains)
       }
     }),
 
