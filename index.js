@@ -6,6 +6,7 @@ const debug = require('debug')("async-flumelog")
 
 const Stream = require("./stream")
 
+function alwaysTrue() { return true }
 function id(e) { return e }
 var _codec = {encode: id, decode: id, buffer: true}
 
@@ -15,6 +16,7 @@ module.exports = function (filename, opts) {
   var blockSize = opts && opts.blockSize || 65536
   var codec = opts && opts.codec || _codec
   var writeTimeout = opts && opts.writeTimeout || 250
+  var validateRecord = opts && opts.validateRecord || alwaysTrue
   var self
 
   // offset of last written record
@@ -45,17 +47,18 @@ module.exports = function (filename, opts) {
       raf.read(len - blockSize, blockSize, (err, buffer) => {
         if (err) throw err
 
-        var recordOffset = getLastRecord(buffer, 0)
-        since.set(len - blockSize + recordOffset)
+        getLastGoodRecord(buffer, len - blockSize, (err, recordOffset) => {
+          since.set(len - blockSize + recordOffset)
 
-        latestBlock = buffer
-        var recordLength = buffer.readUInt16LE(recordOffset)
-        nextWriteBlockOffset = recordOffset + 2 + recordLength
-        latestBlockIndex = len / blockSize - 1
+          latestBlock = buffer
+          var recordLength = buffer.readUInt16LE(recordOffset)
+          nextWriteBlockOffset = recordOffset + 2 + recordLength
+          latestBlockIndex = len / blockSize - 1
 
-        debug("opened file, since: %d", since.value)
+          debug("opened file, since: %d", since.value)
 
-        while(waiting.length) waiting.shift()()
+          while(waiting.length) waiting.shift()()
+        })
       })
     }
   })
@@ -72,18 +75,41 @@ module.exports = function (filename, opts) {
     return (getBlockIndex(offset) + 1) * blockSize
   }
 
-  function getLastRecord(buffer) {
+  function fixBlock(buffer, i, offset, lastOk, cb) {
+    debug("found record that does not validate, fixing last block", i)
+
+    var goodData = buffer.slice(0, i)
+    const newBlock = Buffer.alloc(blockSize)
+    goodData.copy(newBlock, 0)
+
+    raf.write(offset, newBlock, () => {
+      cb(null, lastOk)
+    })
+  }
+
+  function getLastGoodRecord(buffer, offset, cb) {
     for (var i = 0, lastOk = 0; i < buffer.length;) {
       var length = buffer.readUInt16LE(i)
       if (length == 0)
         break
       else {
-        lastOk = i
-        i += 2 + length
+        if (i + 2 + length > blockSize) {
+          // corrupt length data
+          return fixBlock(buffer, i, offset, lastOk, cb)
+        } else {
+          var data = buffer.slice(i + 2, i + 2 + length)
+          if (validateRecord(data)) {
+            lastOk = i
+            i += 2 + length
+          } else {
+            // corrupt message data
+            return fixBlock(buffer, i, offset, lastOk, cb)
+          }
+        }
       }
     }
 
-    return lastOk
+    cb(null, lastOk)
   }
 
   function getBlock(offset, cb) {

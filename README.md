@@ -1,10 +1,10 @@
 # Async flumelog
 
 This module is heavily inspired by [flumelog-aligned-offset]. It is an
-attempt to implement the same concept but in a simpler fashion,
-making it easier to reason about the code.
-Flumelog is the lowest part of the SSB stack, so it should
-extremly stable while still maintaining good performance.
+attempt to implement the same concept but in a simpler fashion, making
+it easier to reason about the code.  Flumelog is the lowest part of
+the SSB stack, so it should extremly stable while still maintaining
+good performance.
 
 An async flumelog consists of a number of `blocks`, that contain a
 number of `record`s. A `record` is simply it's `length`, as a 16-bit
@@ -21,19 +21,34 @@ space at the end of a block.  Blocks are always written in full.
 </block>*
 ```
 
-In contrast to flumelog-aligned-offset there is no additional `length` after the
-`data` in a `record` and no pointer at the end of a `block`. These were there to
-be able to iterate over the log in reverse, but I have never seen the need for
-that.
+In contrast to flumelog-aligned-offset there is no additional `length`
+after the `data` in a `record` and no pointer at the end of a
+`block`. These were there to be able to iterate over the log in
+reverse, but I have never seen the need for that.
 
 Writing to the log is always async. Note this is different from
-[flumelog-offset] and [flumelog-aligned-offset]. The `since` observable
-will be updated once the data is written. The `onDrain` callback can be used to
-know when data has been written if needed. Streaming will only emit
-values that have been written to storage. This is to ensure that a
-view will never get ahead of the main log and thus end up in a bad
-state if the system crashes before data is written. `get` will return
-values that have not been written to disk yet.
+[flumelog-offset] and [flumelog-aligned-offset]. The `since`
+observable will be updated once the data is written. The `onDrain`
+callback can be used to know when data has been written if
+needed. Streaming will only emit values that have been written to
+storage. This is to ensure that a view will never get ahead of the
+main log and thus end up in a bad state if the system crashes before
+data is written. `get` will return values that have not been written
+to disk yet.
+
+## Options
+
+```
+var OffsetLog = require('async-flumelog')
+var log = OffsetLog('/data/log', {
+  blockSize: 1024,          // default is 1024*64
+  codec: {encode, decode}   // defaults to no codec, expects buffers. for json use flumecodec/json
+  writeTimeout: 100         // default is 250. Amount of time to wait between writes
+  validateRecord: (d) => {} // default is no validate. A custom function that takes a message and
+                            // runs a custom validation to ensure the record is valid.
+                            // On load, all records in the latest block will be checked using this
+})
+```
 
 ## Benchmarks
 
