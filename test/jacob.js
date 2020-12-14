@@ -87,9 +87,6 @@ tape('length corruption', function (t) {
   const bipf1 = toBIPF({ text: 'testing' })
   const bipf2 = toBIPF({ bool: true, test: 'testing2' })
 
-  console.log("bipf1", bipf1.length)
-  console.log("bipf2", bipf2.length)
-  
   block.writeUInt16LE(bipf1.length, 0)
   bipf1.copy(block, 2)
   block.writeUInt16LE(65534, 2+bipf1.length)
