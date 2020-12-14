@@ -1,7 +1,7 @@
 {
   "name": "async-flumelog",
   "description": "An async flumelog",
-  "version": "1.0.11",
+  "version": "1.1.0",
   "homepage": "https://github.com/flumedb/async-flumelog",
   "repository": {
     "type": "git",
