@@ -128,7 +128,7 @@ tape('stream delete', function(t) {
         db.onDrain(() => {
           db.stream({seqs: false}).pipe(collect(function (err, ary) {
             t.notOk(err)
-            t.deepEqual(ary, [b2])
+            t.deepEqual(ary, [null, b2])
             t.end()
           }))
         })
