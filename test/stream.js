@@ -26,7 +26,7 @@ function collect (cb) {
 }
 
 tape('empty', function (t) {
-  log.stream({seqs: false}).pipe({
+  log.stream({offsets: false}).pipe({
     paused: false,
     write: function () { throw new Error('should be empty') },
     end: t.end
@@ -38,7 +38,7 @@ tape('single', function (t) {
   log.append(v1, function (err) {
     t.notOk(err)
     log.onDrain(() => {
-      log.stream({seqs: false}).pipe(collect(function (err, ary) {
+      log.stream({offsets: false}).pipe(collect(function (err, ary) {
         t.notOk(err)
         t.deepEqual(ary, [v1])
         t.end()
@@ -49,7 +49,7 @@ tape('single', function (t) {
 
 tape('single, reload', function (t) {
   log = Log(filename, {blockSize: 64*1024})
-  log.stream({seqs: false}).pipe(collect(function (err, ary) {
+  log.stream({offsets: false}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v1])
     t.end()
@@ -61,7 +61,7 @@ tape('second', function (t) {
   log.append(v2, function (err) {
     t.notOk(err)
     log.onDrain(() => {
-      log.stream({seqs: false}).pipe(collect(function (err, ary) {
+      log.stream({offsets: false}).pipe(collect(function (err, ary) {
         t.notOk(err)
         t.deepEqual(ary, [v1, v2])
         t.end()
@@ -76,7 +76,7 @@ tape('live', function (t) {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
-  let ls = log.stream({live: true, seqs: false})
+  let ls = log.stream({live: true, offsets: false})
   ls.pipe(sink)
   log.append(v3, function (err) {})
   log.onDrain(function () {
@@ -87,16 +87,16 @@ tape('live', function (t) {
   })
 })
 
-tape('seqs', function (t) {
-  log.stream({seqs: true}).pipe(collect(function (err, ary) {
+tape('offsets', function (t) {
+  log.stream({offsets: true}).pipe(collect(function (err, ary) {
     t.notOk(err)
-    t.deepEqual(ary, [{ seq: 0, value: v1}, { seq: 10 + 2, value: v2 }, { seq: 10 + 2 + 20 + 2, value: v3 }])
+    t.deepEqual(ary, [{ offset: 0, value: v1}, { offset: 10 + 2, value: v2 }, { offset: 10 + 2 + 20 + 2, value: v3 }])
     t.end()
   }))
 })
 
 tape('limit', function (t) {
-  log.stream({seqs: false, limit: 1}).pipe(collect(function (err, ary) {
+  log.stream({offsets: false, limit: 1}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v1])
     t.end()
@@ -104,7 +104,7 @@ tape('limit', function (t) {
 })
 
 tape('limit gte', function (t) {
-  log.stream({seqs: false, gte: 12, limit: 1}).pipe(collect(function (err, ary) {
+  log.stream({offsets: false, gte: 12, limit: 1}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v2])
     t.end()
@@ -112,7 +112,7 @@ tape('limit gte', function (t) {
 })
 
 tape('gte', function (t) {
-  log.stream({seqs: false, gte: 12}).pipe(collect(function (err, ary) {
+  log.stream({offsets: false, gte: 12}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v2, v3])
     t.end()
@@ -120,7 +120,7 @@ tape('gte', function (t) {
 })
 
 tape('gt', function (t) {
-  log.stream({seqs: false, gt: 12}).pipe(collect(function (err, ary) {
+  log.stream({offsets: false, gt: 12}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v3])
     t.end()
@@ -128,7 +128,7 @@ tape('gt', function (t) {
 })
 
 tape('gt', function (t) {
-  log.stream({seqs: false, gt: 0}).pipe(collect(function (err, ary) {
+  log.stream({offsets: false, gt: 0}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v2, v3])
     t.end()
@@ -136,7 +136,7 @@ tape('gt', function (t) {
 })
 
 tape('gt -1', function (t) {
-  log.stream({seqs: false, gt: -1}).pipe(collect(function (err, ary) {
+  log.stream({offsets: false, gt: -1}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v1, v2, v3])
     t.end()
@@ -149,7 +149,7 @@ tape('live gt', function (t) {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
-  let ls = log.stream({ live: true, seqs: false, gt: 10 + 2 + 20 + 2 })
+  let ls = log.stream({ live: true, offsets: false, gt: 10 + 2 + 20 + 2 })
   ls.pipe(sink)
   log.append(v4, function (err) {})
   log.onDrain(() => {
@@ -171,7 +171,7 @@ tape('double live', function (t) {
 
   var i = 0
 
-  log.stream({ live: true, seqs: false }).pipe({
+  log.stream({ live: true, offsets: false }).pipe({
     paused: false,
     write: function (data) {
       if (i == 0) {
@@ -187,7 +187,7 @@ tape('double live', function (t) {
 
 tape('close', function (t) {
   t.equal(log.streams.length, 0, 'no open streams')
-  log.stream({seqs: false}).pipe({
+  log.stream({offsets: false}).pipe({
     paused: false,
     write: function () {},
     end: function() {

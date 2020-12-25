@@ -8,7 +8,7 @@ function Stream (blocks, opts) {
 
   this.blocks = blocks
   this.live = !!opts.live
-  this.seqs = opts.seqs !== false
+  this.offsets = opts.offsets !== false
   this.values = opts.values !== false
   this.limit = opts.limit || 0
 
@@ -52,7 +52,7 @@ Stream.prototype._ready = function () {
 
 Stream.prototype._writeToSink = function (data) {
   if (this.values) {
-    if (this.seqs) this.sink.write({ seq: this.cursor, value: data })
+    if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
     else this.sink.write(data)
   }
   else

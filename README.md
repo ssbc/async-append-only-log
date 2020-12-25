@@ -1,16 +1,16 @@
-# Async flumelog
+# Async log
 
 This module is heavily inspired by [flumelog-aligned-offset]. It is an
 attempt to implement the same concept but in a simpler fashion, making
-it easier to reason about the code.  Flumelog is the lowest part of
-the SSB stack, so it should extremly stable while still maintaining
-good performance.
+it easier to reason about the code. A log is the lowest part of the
+SSB stack, so it should extremly stable while still maintaining good
+performance.
 
-An async flumelog consists of a number of `blocks`, that contain a
-number of `record`s. A `record` is simply it's `length`, as a 16-bit
-unsigned integer, followed by the `data` bytes. A record must be in
-one and only one block, which means there probably will be some empty
-space at the end of a block.  Blocks are always written in full.
+An async log consists of a number of `blocks`, that contain a number
+of `record`s. A `record` is simply it's `length`, as a 16-bit unsigned
+integer, followed by the `data` bytes. A record must be in one and
+only one block, which means there probably will be some empty space at
+the end of a block.  Blocks are always written in full.
 
 ```
 <block>
@@ -35,6 +35,10 @@ storage. This is to ensure that a view will never get ahead of the
 main log and thus end up in a bad state if the system crashes before
 data is written. `get` will return values that have not been written
 to disk yet.
+
+This module is not compatible with flume without a wrapper around
+stream as it uses the same terminology as [JITDB] and [ssb-db2] of
+using offset for the byte position of a record instead of seq.
 
 ## Options
 
@@ -87,5 +91,6 @@ applied.
 [flumelog-aligned-offset]: https://github.com/flumedb/flumelog-aligned-offset/
 [flumelog-offset]: https://github.com/flumedb/flumelog-offset/
 [bench-flumelog]: https://github.com/flumedb/bench-flumelog
-[JITDB]: https://github.com/arj03/jitdb/
+[JITDB]: https://github.com/ssb-ngi-pointer/jitdb/
 [jitdb-results]: https://github.com/arj03/jitdb/blob/master/bench.txt
+[ssb-db2]: https://github.com/ssb-ngi-pointer/ssb-db2/
