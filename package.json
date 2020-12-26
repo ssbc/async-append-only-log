@@ -1,11 +1,11 @@
 {
-  "name": "async-flumelog",
-  "description": "An async flumelog",
-  "version": "2.0.0",
-  "homepage": "https://github.com/flumedb/async-flumelog",
+  "name": "async-log",
+  "description": "An async log",
+  "version": "3.0.0",
+  "homepage": "https://github.com/ssb-ngi-pointer/async-log",
   "repository": {
     "type": "git",
-    "url": "https://github.com/flumedb/async-flumelog"
+    "url": "https://github.com/ssb-ngi-pointer/async-log"
   },
   "dependencies": {
     "debug": "^4.2.0",
