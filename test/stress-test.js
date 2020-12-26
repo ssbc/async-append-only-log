@@ -27,7 +27,7 @@ for (var run = 0; run < 10; ++run) {
 
         var result = []
         
-        db.stream({seqs: false}).pipe({
+        db.stream({offsets: false}).pipe({
           paused: false,
           write: function (e) { result.push(e) },
           end: function() {
@@ -66,7 +66,7 @@ for (var run = 0; run < 10; ++run) {
     var sink = collect(function () {
       throw new Error('live stream should not end')
     })
-    db.stream({live: true, seqs: false}).pipe(sink)
+    db.stream({live: true, offsets: false}).pipe(sink)
 
     var data = [], latestOffset = 0
     for (var i = 0; i < items; i++) {

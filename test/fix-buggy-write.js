@@ -34,7 +34,7 @@ tape('simple', function (t) {
       t.equal(offset2, 33)
 
       db.onDrain(() => {
-        db.stream({seqs: false}).pipe(collect(function (err, ary) {
+        db.stream({offsets: false}).pipe(collect(function (err, ary) {
           t.deepEqual(ary, [v1, v2])
           t.end()
         }))
@@ -50,7 +50,7 @@ tape('simple reread', function (t) {
   })
 
   db.onReady(() => {
-    db.stream({seqs: false}).pipe(collect(function (err, ary) {
+    db.stream({offsets: false}).pipe(collect(function (err, ary) {
       t.deepEqual(ary, [v1, v2])
       t.end()
     }))

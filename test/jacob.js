@@ -37,7 +37,7 @@ tape('corrupt message re-read without validation', function (t) {
   db.onReady(() => {
     var result = []
     
-    db.stream({seqs: false}).pipe({
+    db.stream({offsets: false}).pipe({
       paused: false,
       write: function (e) { result.push(e) },
       end: function() {
@@ -66,7 +66,7 @@ tape('corrupt message re-read with validation', function (t) {
   db.onReady(() => {
     var result = []
     
-    db.stream({seqs: false}).pipe({
+    db.stream({offsets: false}).pipe({
       paused: false,
       write: function (e) { result.push(e) },
       end: function() {
@@ -106,7 +106,7 @@ tape('length re-read without validation', function (t) {
   db.onReady(() => {
     var result = []
     
-    db.stream({seqs: false}).pipe({
+    db.stream({offsets: false}).pipe({
       paused: false,
       write: function (e) { result.push(e) },
       end: function() {
@@ -140,7 +140,7 @@ tape('length re-read with validation', function (t) {
   db.onReady(() => {
     var result = []
     
-    db.stream({seqs: false}).pipe({
+    db.stream({offsets: false}).pipe({
       paused: false,
       write: function (e) { result.push(e) },
       end: function() {
