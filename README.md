@@ -1,4 +1,4 @@
-# Async log
+# Async append only log
 
 This module is heavily inspired by [flumelog-aligned-offset]. It is an
 attempt to implement the same concept but in a simpler fashion, making
@@ -6,8 +6,8 @@ it easier to reason about the code. A log is the lowest part of the
 SSB stack, so it should extremly stable while still maintaining good
 performance.
 
-An async log consists of a number of `blocks`, that contain a number
-of `record`s. A `record` is simply it's `length`, as a 16-bit unsigned
+A log consists of a number of `blocks`, that contain a number of
+`record`s. A `record` is simply it's `length`, as a 16-bit unsigned
 integer, followed by the `data` bytes. A record must be in one and
 only one block, which means there probably will be some empty space at
 the end of a block.  Blocks are always written in full.
