@@ -276,6 +276,8 @@ module.exports = function (filename, opts) {
         let drainsAfter = waitingDrain.get(blockIndex) || []
         if (drainsBefore.length == drainsAfter.length)
           waitingDrain.delete(blockIndex)
+        else if (drainsAfter.length === 0)
+          waitingDrain.delete(blockIndex)
         else
           waitingDrain.set(blockIndex, waitingDrain.get(blockIndex).slice(drainsBefore.length))
 
