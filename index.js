@@ -143,7 +143,10 @@ module.exports = function (filename, opts) {
   }
 
   function get(offset, cb) {
-    if (typeof offset !== 'number' || isNaN(offset) || offset < 0) return cb('Offset is a naughty number (must be >= 0)')
+    if (typeof offset !== 'number' || isNaN(offset))
+      return cb(`Offset ${offset} is not a number`)
+    else if (offset < 0)
+      return cb(`Offset is ${offset} must be >= 0`)
 
     getBlock(offset, (err, buffer) => {
       if (err) return cb(err)

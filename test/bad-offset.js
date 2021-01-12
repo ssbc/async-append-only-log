@@ -13,7 +13,7 @@ tape('NaN', function (t) {
     if(err) throw err
     t.equal(offset1, 0)
     db.get(NaN, function (err, b) {
-      t.equal(err, 'Offset is a naughty number (must be >= 0)')
+      t.equal(err, 'Offset NaN is not a number')
       db.close(t.end)
     })
   })
@@ -30,7 +30,7 @@ tape('-1', function (t) {
     if(err) throw err
     t.equal(offset1, 0)
     db.get(-1, function (err, b) {
-      t.equal(err, 'Offset is a naughty number (must be >= 0)')
+      t.equal(err, 'Offset is -1 must be >= 0')
       db.close(t.end)
     })
   })
