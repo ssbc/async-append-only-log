@@ -19,18 +19,20 @@
     "push-stream-to-pull-stream": "^1.0.3"
   },
   "devDependencies": {
-    "bipf": "^1.4.0",
     "bench-flumelog": "^2.0.0",
+    "bipf": "^1.4.0",
     "cont": "^1.0.3",
     "flumecodec": "0.0.1",
     "flumedb": "^2.1.8",
     "flumeview-level": "^4.0.4",
+    "nyc": "^15.1.0",
     "pull-stream": "^3.6.14",
     "tape": "^5.0.1",
     "test-flumeview-index": "^2.3.1"
   },
   "scripts": {
-    "test": "set -e; for t in test/*.js; do node $t; done"
+    "test": "set -e; for t in test/*.js; do node $t; done",
+    "coverage": "nyc npm run test"
   },
   "author": "Anders Rune Jensen <arj03@protonmail.ch>",
   "contributors": [
