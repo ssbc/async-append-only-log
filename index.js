@@ -90,7 +90,7 @@ module.exports = function (filename, opts) {
   function getLastGoodRecord(buffer, offset, cb) {
     for (var i = 0, lastOk = 0; i < buffer.length;) {
       var length = buffer.readUInt16LE(i)
-      if (length == 0)
+      if (length === 0)
         break
       else {
         if (i + 2 + length > blockSize) {
@@ -167,9 +167,9 @@ module.exports = function (filename, opts) {
 
     const nextLength = buffer.readUInt16LE(recordOffset + 2 + length)
     let nextOffset = recordOffset + 2 + length + blockIndex * blockSize
-    if (nextLength == 0 && getNextBlockIndex(offset) > since.value)
+    if (nextLength === 0 && getNextBlockIndex(offset) > since.value)
       nextOffset = -1
-    else if (nextLength == 0)
+    else if (nextLength === 0)
       nextOffset = 0
 
     if (data.every(x => x === 0))
@@ -206,7 +206,7 @@ module.exports = function (filename, opts) {
 
   function appendSingle(data) {
     let encodedData = codec.encode(data)
-    if (typeof encodedData == 'string')
+    if (typeof encodedData === 'string')
       encodedData = Buffer.from(encodedData)
 
     if (frameSize(encodedData) + 2 > blockSize)
@@ -279,7 +279,7 @@ module.exports = function (filename, opts) {
           drainsBefore[i]()
 
         let drainsAfter = waitingDrain.get(blockIndex) || []
-        if (drainsBefore.length == drainsAfter.length)
+        if (drainsBefore.length === drainsAfter.length)
           waitingDrain.delete(blockIndex)
         else if (drainsAfter.length === 0)
           waitingDrain.delete(blockIndex)

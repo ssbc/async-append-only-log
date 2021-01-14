@@ -41,10 +41,10 @@ Stream.prototype._ready = function () {
   if (this.opts.gt >= 0)
     this.skipFirst = true
 
-  if (!this.live && this.cursor === 0 && this.blocks.since.value == -1)
+  if (!this.live && this.cursor === 0 && this.blocks.since.value === -1)
     this.ended = true
 
-  if (this.live && this.cursor === 0 && this.blocks.since.value == -1)
+  if (this.live && this.cursor === 0 && this.blocks.since.value === -1)
     this.cursor = -1
 
   this.resume()
@@ -70,9 +70,9 @@ Stream.prototype._handleBlock = function(block) {
       if (result[0] > 0) {
         this.cursor = result[0]
         continue
-      } else if (result[0] == 0) {
+      } else if (result[0] === 0) {
         return true // get next block
-      } else if (result[0] == -1) {
+      } else if (result[0] === -1) {
         if (this.live === true)
           this.writing = false
         return false
@@ -89,9 +89,9 @@ Stream.prototype._handleBlock = function(block) {
 
       if (result[0] > 0)
         this.cursor = result[0]
-      else if (result[0] == 0) {
+      else if (result[0] === 0) {
         return true // get next block
-      } else if (result[0] == -1) {
+      } else if (result[0] === -1) {
         if (this.live === true)
           this.writing = false
         return false

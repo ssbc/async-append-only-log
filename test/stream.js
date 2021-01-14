@@ -174,7 +174,7 @@ tape('double live', function (t) {
   log.stream({ live: true, offsets: false }).pipe({
     paused: false,
     write: function (data) {
-      if (i == 0) {
+      if (i === 0) {
         log.append(B(0x20, 20), function (err) {})
         ++i
       } else
