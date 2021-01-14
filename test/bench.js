@@ -46,7 +46,7 @@ function ordered_para (db, N, _, cb) {
 
   function next (err, v) {
     if(err) return cb(err)
-    if(++n == N) cb(null, N)
+    if(++n === N) cb(null, N)
   }
 }
 
@@ -57,7 +57,7 @@ function ordered_series (db, N, _, cb) {
     var key = '#'+(i++)
     db.index.get(i, function (err, v) {
       if(v.key != key) return cb('benchmark failed: incorrect key returned')
-      if(i == n) cb(null, N)
+      if(i === n) cb(null, N)
       else setImmediate(_next)
     })
   })(0)
@@ -84,7 +84,7 @@ function random_para (db, N, _, cb) {
     if(err && n >= 0) {
       n = -1; cb(err)
     }
-    else if(++n == N)
+    else if(++n === N)
       cb(null, N)
   }
 }
