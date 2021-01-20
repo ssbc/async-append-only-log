@@ -61,18 +61,18 @@ Stream.prototype._writeToSink = function (data) {
 
 Stream.prototype._handleBlock = function(block) {
   while (true) {
-    const result = this.blocks.getDataNextOffset(block, this.cursor)
+    const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
     const o = this.cursor
 
     if (this.skipFirst) {
       this.skipFirst = false
 
-      if (result[0] > 0) {
-        this.cursor = result[0]
+      if (offset > 0) {
+        this.cursor = offset
         continue
-      } else if (result[0] === 0) {
+      } else if (offset === 0) {
         return true // get next block
-      } else if (result[0] === -1) {
+      } else if (offset === -1) {
         if (this.live === true)
           this.writing = false
         return false
@@ -85,13 +85,13 @@ Stream.prototype._handleBlock = function(block) {
       (this.min === null || this.min < o || this.min_inclusive === o) &&
       (this.max === null || this.max > o || this.max_inclusive === o)
     ) {
-      this._writeToSink(result[1])
+      this._writeToSink(data)
 
-      if (result[0] > 0)
-        this.cursor = result[0]
-      else if (result[0] === 0) {
+      if (offset > 0)
+        this.cursor = offset
+      else if (offset === 0) {
         return true // get next block
-      } else if (result[0] === -1) {
+      } else if (offset === -1) {
         if (this.live === true)
           this.writing = false
         return false
@@ -110,7 +110,7 @@ Stream.prototype._resume = function () {
   if (this.ended && !this.sink.ended) {
     if (this.ended === true && !this.live)
       return this.abort()
-    else
+    else if (this.sink.end)
       return this.sink.end(this.ended === true ? null : this.ended)
   }
 
@@ -131,6 +131,7 @@ Stream.prototype._resume = function () {
       this.cursor = this.blocks.getNextBlockIndex(this.cursor)
       this._next()
     }
+    else if (this.sink.paused) return
     else if (this.live !== true)
       this.abort()
   })
