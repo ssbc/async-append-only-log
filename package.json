@@ -1,7 +1,7 @@
 {
   "name": "async-append-only-log",
   "description": "An async append only log",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "homepage": "https://github.com/ssb-ngi-pointer/async-append-only-log",
   "repository": {
     "type": "git",
