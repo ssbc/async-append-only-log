@@ -61,6 +61,7 @@ Stream.prototype._writeToSink = function (data) {
 
 Stream.prototype._handleBlock = function(block) {
   while (true) {
+    if (this.sink.paused) return false
     const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
     const o = this.cursor
 
