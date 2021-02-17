@@ -50,9 +50,9 @@ Stream.prototype._ready = function () {
   this.resume()
 }
 
-Stream.prototype._writeToSink = function (data) {
+Stream.prototype._writeToSink = function (data, offset) {
   if (this.values) {
-    if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
+    if (this.offsets) this.sink.write({ offset, value: data })
     else this.sink.write(data)
   }
   else
@@ -85,7 +85,7 @@ Stream.prototype._handleBlock = function(block) {
       (this.min === null || this.min < o || this.min_inclusive === o) &&
       (this.max === null || this.max > o || this.max_inclusive === o)
     ) {
-      this._writeToSink(data)
+      this._writeToSink(data, o)
 
       if (offset > 0)
         this.cursor = offset
