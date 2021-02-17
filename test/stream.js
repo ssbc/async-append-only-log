@@ -95,6 +95,36 @@ tape('offsets', function (t) {
   }))
 })
 
+tape('pausable', function (t) {
+  let i = 0
+  let sink
+  log.stream({offsets: false}).pipe(sink = {
+    paused: false,
+    write: function(data) {
+      if (i === 0) {
+        t.deepEqual(data, v1, 'v1')
+        sink.paused = true
+        setTimeout(() => {
+          sink.paused = false
+          sink.source.resume()
+        }, 100)
+      }
+      if (i === 1) {
+        if (sink.paused) t.fail('should not write sink when it is paused')
+        t.deepEqual(data, v2, 'v2')
+      }
+      if (i === 2) {
+        if (sink.paused) t.fail('should not write sink when it is paused')
+        t.deepEqual(data, v3, 'v3')
+      }
+      i++
+    },
+    end: function() {
+      t.end()
+    }
+  })
+})
+
 tape('limit', function (t) {
   log.stream({offsets: false, limit: 1}).pipe(collect(function (err, ary) {
     t.notOk(err)
