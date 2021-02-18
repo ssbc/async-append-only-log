@@ -101,6 +101,8 @@ tape('pausable', function (t) {
   log.stream({offsets: false}).pipe(sink = {
     paused: false,
     write: function(data) {
+      if (sink.paused) t.fail('should not write sink when it is paused')
+
       if (i === 0) {
         t.deepEqual(data, v1, 'v1')
         sink.paused = true
@@ -110,11 +112,9 @@ tape('pausable', function (t) {
         }, 100)
       }
       if (i === 1) {
-        if (sink.paused) t.fail('should not write sink when it is paused')
         t.deepEqual(data, v2, 'v2')
       }
       if (i === 2) {
-        if (sink.paused) t.fail('should not write sink when it is paused')
         t.deepEqual(data, v3, 'v3')
       }
       i++
