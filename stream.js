@@ -59,9 +59,10 @@ Stream.prototype._writeToSink = function (data) {
     this.sink.write(this.cursor)
 }
 
+// returns true="next block", false="end stream", null="pause"
 Stream.prototype._handleBlock = function(block) {
   while (true) {
-    if (this.sink.paused) return false
+    if (this.sink.paused) return null
     const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
     const o = this.cursor
 
@@ -108,11 +109,13 @@ Stream.prototype._handleBlock = function(block) {
 Stream.prototype._resume = function () {
   if (!this.sink || this.sink.paused) return
 
-  if (this.ended && !this.sink.ended) {
-    if (this.ended === true && !this.live)
-      return this.abort()
-    else if (this.sink.end)
-      return this.sink.end(this.ended === true ? null : this.ended)
+  if (this.ended) {
+    if (!this.sink.ended) {
+      if (this.ended === true && !this.live) return this.abort()
+      else if (this.sink.end)
+        return this.sink.end(this.ended === true ? null : this.ended)
+    }
+    return
   }
 
   if (this.cursor === -1)
@@ -128,13 +131,13 @@ Stream.prototype._resume = function () {
       return
     }
 
-    if (this._handleBlock(block)) {
+    const handled = this._handleBlock(block)
+    if (handled === true) {
       this.cursor = this.blocks.getNextBlockIndex(this.cursor)
       this._next()
     }
-    else if (this.sink.paused) return
-    else if (this.live !== true)
-      this.abort()
+    else if (handled === null) return
+    else if (this.live !== true) this.abort()
   })
 }
 
@@ -149,8 +152,10 @@ Stream.prototype.abort = function (err) {
   this.ended = err || true
   var i = this.blocks.streams.indexOf(this)
   if (~i) this.blocks.streams.splice(i, 1)
-  if (!this.sink.ended && this.sink.end)
+  if (!this.sink.ended && this.sink.end) {
+    this.sink.ended = true
     this.sink.end(err === true ? null : err)
+  }
 }
 
 Stream.prototype.pipe = require('push-stream/pipe')
