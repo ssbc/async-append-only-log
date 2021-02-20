@@ -15,11 +15,11 @@ function Stream (blocks, opts) {
   this.min = this.max = this.min_inclusive = this.max_inclusive = null
   this.cursor = -1
   this.count = 0
+  this.hasWritten = false
   this.writing = false
   this.ended = false
   this.skipFirst = false
 
-  var self = this
   this.opts = opts
   this.blocks.onReady(this._ready.bind(this))
 }
@@ -51,6 +51,7 @@ Stream.prototype._ready = function () {
 }
 
 Stream.prototype._writeToSink = function (data) {
+  if (!this.hasWritten) this.hasWritten = true
   if (this.values) {
     if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
     else this.sink.write(data)
@@ -121,7 +122,7 @@ Stream.prototype._resume = function () {
   if (this.cursor === -1)
     return // not ready yet
 
-  if (this.live && !this.writing && this.cursor > 0)
+  if (this.live && !this.writing && this.hasWritten)
     return // wait for data
 
   this.writing = true
