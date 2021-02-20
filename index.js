@@ -292,10 +292,9 @@ module.exports = function (filename, opts) {
   }
 
   function write() {
-    for (var blockIndex of blocksToBeWritten.keys()) {
-      writeBlock(blockIndex)
-      return // just one at a time
-    }
+    // just one at a time
+    if (blocksToBeWritten.size > 0)
+      writeBlock(blocksToBeWritten.keys().next().value)
   }
 
   function close(cb) {
