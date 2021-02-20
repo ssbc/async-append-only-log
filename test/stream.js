@@ -47,6 +47,29 @@ tape('single', function (t) {
   })
 })
 
+tape('single live pausable', function (t) {
+  t.timeoutAfter(500)
+  let i = 0
+  let sink
+  log.stream({offsets: false, live: true}).pipe(sink = {
+    paused: false,
+    write: function(data) {
+      t.deepEqual(data, v1)
+      t.equal(i, 0)
+      sink.paused = true
+      setTimeout(() => {
+        sink.paused = false
+        sink.source.resume()
+      })
+      i++
+    },
+    end: function() {
+      t.fail('should not end live stream')
+    }
+  })
+  setTimeout(t.end, 300)
+})
+
 tape('single, reload', function (t) {
   log = Log(filename, {blockSize: 64*1024})
   log.stream({offsets: false}).pipe(collect(function (err, ary) {
