@@ -21,7 +21,7 @@ function Stream (blocks, opts) {
   this.skipFirst = false
 
   this.opts = opts
-  this._resumeCallback = this._resumeCallback.bind(this);
+  this._resumeCallback = this._resumeCallback.bind(this)
   this.blocks.onReady(this._ready.bind(this))
 }
 
