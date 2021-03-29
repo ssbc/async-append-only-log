@@ -21,6 +21,7 @@ function Stream (blocks, opts) {
   this.skipFirst = false
 
   this.opts = opts
+  this._resumeCallback = this._resumeCallback.bind(this);
   this.blocks.onReady(this._ready.bind(this))
 }
 
@@ -126,20 +127,22 @@ Stream.prototype._resume = function () {
     return // wait for data
 
   this.writing = true
-  this.blocks.getBlock(this.cursor, (err, block) => {
-    if (err) {
-      console.error(err)
-      return
-    }
+  this.blocks.getBlock(this.cursor, this._resumeCallback)
+}
 
-    const handled = this._handleBlock(block)
-    if (handled === true) {
-      this.cursor = this.blocks.getNextBlockIndex(this.cursor)
-      this._next()
-    }
-    else if (handled === null) return
-    else if (this.live !== true) this.abort()
-  })
+Stream.prototype._resumeCallback = function (err, block) {
+  if (err) {
+    console.error(err)
+    return
+  }
+
+  const handled = this._handleBlock(block)
+  if (handled === true) {
+    this.cursor = this.blocks.getNextBlockIndex(this.cursor)
+    this._next()
+  }
+  else if (handled === null) return
+  else if (this.live !== true) this.abort()
 }
 
 Stream.prototype.resume = function () {
