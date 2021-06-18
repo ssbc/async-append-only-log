@@ -281,6 +281,7 @@ module.exports = function (filename, opts) {
         for (var i = 0; i < drainsBefore.length; ++i)
           drainsBefore[i]()
 
+        // the resumed streams might have added more to waiting
         let drainsAfter = waitingDrain.get(blockIndex) || []
         if (drainsBefore.length === drainsAfter.length)
           waitingDrain.delete(blockIndex)
