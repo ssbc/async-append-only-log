@@ -25,6 +25,7 @@ module.exports = function (filename, opts) {
   var waiting = []
   const waitingDrain = new Map() // blockIndex -> []
   const blocksToBeWritten = new Map() // blockIndex -> { block, fileOffset }
+  let writingBlockIndex = -1
 
   var latestBlock = null
   var latestBlockIndex = null
@@ -248,13 +249,15 @@ module.exports = function (filename, opts) {
 
   function writeBlock(blockIndex) {
     if (!blocksToBeWritten.has(blockIndex)) return
+    writingBlockIndex = blockIndex
     const { block, fileOffset } = blocksToBeWritten.get(blockIndex)
     blocksToBeWritten.delete(blockIndex)
-    const drainsBefore = (waitingDrain.get(blockIndex) || []).slice(0)
 
     debug("writing block of size: %d, to offset: %d",
           block.length, blockIndex * blockSize)
     raf.write(blockIndex * blockSize, block, (err) => {
+      const drainsBefore = (waitingDrain.get(blockIndex) || []).slice(0)
+      writingBlockIndex = -1
       if (err) {
         debug("failed to write block %d", blockIndex)
         throw err
@@ -278,6 +281,7 @@ module.exports = function (filename, opts) {
         for (var i = 0; i < drainsBefore.length; ++i)
           drainsBefore[i]()
 
+        // the resumed streams might have added more to waiting
         let drainsAfter = waitingDrain.get(blockIndex) || []
         if (drainsBefore.length === drainsAfter.length)
           waitingDrain.delete(blockIndex)
@@ -333,9 +337,9 @@ module.exports = function (filename, opts) {
     onReady,
 
     onDrain: onLoad(function (fn) {
-      if (blocksToBeWritten.size === 0) fn()
+      if (blocksToBeWritten.size === 0 && writingBlockIndex === -1) fn()
       else {
-        const latestBlockIndex = last(blocksToBeWritten.keys())
+        const latestBlockIndex = blocksToBeWritten.size > 0 ? last(blocksToBeWritten.keys()) : writingBlockIndex
         const drains = waitingDrain.get(latestBlockIndex) || []
         drains.push(fn)
         waitingDrain.set(latestBlockIndex, drains)
