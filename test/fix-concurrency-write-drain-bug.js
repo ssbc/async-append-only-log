@@ -1,43 +1,36 @@
-var tape = require('tape')
-var fs = require('fs')
-var Offset = require('../')
+const tape = require('tape')
+const fs = require('fs')
+const Offset = require('../')
 
-function collect (cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (v) { this.array.push(v) },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    }
-  }
-}
+const file = '/tmp/ds-test_drain_since.log'
 
-var file = '/tmp/ds-test_drain_since.log'
+const v1 = { v: 'hello world hello world' }
 
-var v1 = { v: 'hello world hello world' } 
-
-for (var i = 0; i < 1000; ++i) {
-  tape('check since after drain', function (t) {
-    try { fs.unlinkSync(file+i) } catch (_) {}
-    var db = Offset(file + i, {
-      block: 16*1024,
+tape('check since after drain', async (t) => {
+  for (var i = 0; i < 1000; ++i) {
+    try { fs.unlinkSync(file + i); } catch (_) {}
+    const db = Offset(file + i, {
+      block: 16 * 1024,
       writeTimeout: 1,
-      codec: require('flumecodec/json')
-    })
+      codec: require('flumecodec/json'),
+    });
 
-    db.onReady(() => {
-      db.append(v1, function (err, offset1) {
-        if(err) throw err
+    await new Promise((resolve, reject) => {
+      db.onReady(() => {
+        db.append(v1, (err, offset1) => {
+          if (err) reject(err)
 
-        setTimeout(() => {
-          db.onDrain(() => {
-            t.equal(db.since.value, 0, 'after drain offset is set')
-            t.end()
-          })
-        }, 1)
-      })
-    })
-  })
-}
+          setTimeout(() => {
+            db.onDrain(() => {
+              if (db.since.value !== 0) {
+                t.fail('after drain offset was not set');
+              }
+              resolve();
+            });
+          }, 1);
+        });
+      });
+    });
+  }
+  t.end();
+});
