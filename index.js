@@ -179,8 +179,7 @@ module.exports = function (filename, opts) {
       return [nextOffset, codec.decode(data)]
   }
 
-  function del(offset, cb)
-  {
+  function del(offset, cb) {
     getBlock(offset, (err, buffer) => {
       if (err) return cb(err)
 
@@ -194,14 +193,12 @@ module.exports = function (filename, opts) {
     })
   }
 
-  function appendFrame(buffer, data, offset)
-  {
+  function appendFrame(buffer, data, offset) {
     buffer.writeUInt16LE(data.length, offset)
     data.copy(buffer, offset+2)
   }
 
-  function frameSize(buffer)
-  {
+  function frameSize(buffer) {
     return buffer.length + 2
   }
 
