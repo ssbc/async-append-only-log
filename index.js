@@ -11,30 +11,30 @@ function id(e) { return e }
 var _codec = {encode: id, decode: id, buffer: true}
 
 module.exports = function (filename, opts) {
-  var cache = new Cache(1024) // this is potentially 65mb!
-  var raf = RAF(filename)
-  var blockSize = opts && opts.blockSize || 65536
-  var codec = opts && opts.codec || _codec
-  var writeTimeout = opts && opts.writeTimeout || 250
-  var validateRecord = opts && opts.validateRecord || alwaysTrue
-  var self
+  const cache = new Cache(1024) // this is potentially 65mb!
+  const raf = RAF(filename)
+  const blockSize = opts && opts.blockSize || 65536
+  const codec = opts && opts.codec || _codec
+  const writeTimeout = opts && opts.writeTimeout || 250
+  const validateRecord = opts && opts.validateRecord || alwaysTrue
+  let self
 
   // offset of last written record
-  var since = Obv()
+  const since = Obv()
 
-  var waiting = []
+  const waiting = []
   const waitingDrain = new Map() // blockIndex -> []
   const blocksToBeWritten = new Map() // blockIndex -> { block, fileOffset }
   let writingBlockIndex = -1
 
-  var latestBlock = null
-  var latestBlockIndex = null
-  var nextWriteBlockOffset = null
+  let latestBlock = null
+  let latestBlockIndex = null
+  let nextWriteBlockOffset = null
 
   raf.stat(function (err, stat) {
     if (err) debug("failed to stat " + filename, err)
 
-    var len = stat ? stat.size : -1
+    const len = stat ? stat.size : -1
 
     if (len <= 0) {
       debug("empty file")
@@ -52,7 +52,7 @@ module.exports = function (filename, opts) {
           since.set(len - blockSize + recordOffset)
 
           latestBlock = buffer
-          var recordLength = buffer.readUInt16LE(recordOffset)
+          const recordLength = buffer.readUInt16LE(recordOffset)
           nextWriteBlockOffset = recordOffset + 2 + recordLength
           latestBlockIndex = len / blockSize - 1
 
@@ -79,7 +79,7 @@ module.exports = function (filename, opts) {
   function fixBlock(buffer, i, offset, lastOk, cb) {
     debug("found record that does not validate, fixing last block", i)
 
-    var goodData = buffer.slice(0, i)
+    const goodData = buffer.slice(0, i)
     const newBlock = Buffer.alloc(blockSize)
     goodData.copy(newBlock, 0)
 
@@ -89,8 +89,9 @@ module.exports = function (filename, opts) {
   }
 
   function getLastGoodRecord(buffer, offset, cb) {
-    for (var i = 0, lastOk = 0; i < buffer.length;) {
-      var length = buffer.readUInt16LE(i)
+    let lastOk = 0
+    for (let i = 0; i < buffer.length;) {
+      const length = buffer.readUInt16LE(i)
       if (length === 0)
         break
       else {
@@ -98,7 +99,7 @@ module.exports = function (filename, opts) {
           // corrupt length data
           return fixBlock(buffer, i, offset, lastOk, cb)
         } else {
-          var data = buffer.slice(i + 2, i + 2 + length)
+          const data = buffer.slice(i + 2, i + 2 + length)
           if (validateRecord(data)) {
             lastOk = i
             i += 2 + length
@@ -114,8 +115,8 @@ module.exports = function (filename, opts) {
   }
 
   function getBlock(offset, cb) {
-    var blockStart = offset - getRecordOffset(offset)
-    var blockIndex = blockStart / blockSize
+    const blockStart = offset - getRecordOffset(offset)
+    const blockIndex = blockStart / blockSize
 
     var cachedBlock = cache.get(blockIndex)
     if (cachedBlock) {
@@ -131,8 +132,8 @@ module.exports = function (filename, opts) {
   }
 
   function getData(buffer, recordOffset, cb) {
-    var length = buffer.readUInt16LE(recordOffset)
-    var data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
+    const length = buffer.readUInt16LE(recordOffset)
+    const data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
 
     if (data.every(x => x === 0)) {
       const err = new Error('item has been deleted')
@@ -213,7 +214,7 @@ module.exports = function (filename, opts) {
     if (nextWriteBlockOffset + frameSize(encodedData) + 2 > blockSize)
     {
       // doesn't fit
-      var buffer = Buffer.alloc(blockSize)
+      const buffer = Buffer.alloc(blockSize)
       latestBlock = buffer
       latestBlockIndex += 1
       nextWriteBlockOffset = 0
@@ -233,8 +234,8 @@ module.exports = function (filename, opts) {
   function append(data, cb)
   {
     if (Array.isArray(data)) {
-      var fileOffset = 0
-      for (var i = 0, length = data.length; i < length; ++i)
+      let fileOffset = 0
+      for (let i = 0, length = data.length; i < length; ++i)
         fileOffset = appendSingle(data[i])
 
       cb(null, fileOffset)
@@ -242,7 +243,7 @@ module.exports = function (filename, opts) {
       cb(null, appendSingle(data))
   }
 
-  var scheduleWrite = debounce(write, writeTimeout)
+  const scheduleWrite = debounce(write, writeTimeout)
 
   function writeBlock(blockIndex) {
     if (!blocksToBeWritten.has(blockIndex)) return
@@ -275,7 +276,7 @@ module.exports = function (filename, opts) {
         })
 
         debug("draining the waiting queue for %d, items: %d", blockIndex, drainsBefore.length)
-        for (var i = 0; i < drainsBefore.length; ++i)
+        for (let i = 0; i < drainsBefore.length; ++i)
           drainsBefore[i]()
 
         // the resumed streams might have added more to waiting
@@ -350,7 +351,7 @@ module.exports = function (filename, opts) {
     getDataNextOffset,
     getBlock,
     stream: function (opts) {
-      var stream = new Stream(self, opts)
+      const stream = new Stream(self, opts)
       self.streams.push(stream)
       return stream
     },
