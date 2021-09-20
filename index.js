@@ -209,6 +209,8 @@ module.exports = function (filename, opts) {
     if (typeof encodedData === 'string')
       encodedData = Buffer.from(encodedData)
 
+    // we always leave 2 bytes at the end as the last record must be
+    // followed by a 0 (length) to signal end of record
     if (recordSize(encodedData) + 2 > blockSize)
       throw new Error("data larger than block size")
 
