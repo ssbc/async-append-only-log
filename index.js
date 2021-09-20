@@ -6,9 +6,10 @@ const debug = require('debug')("async-flumelog")
 
 const Stream = require("./stream")
 
+// defaults
 function alwaysTrue() { return true }
 function id(e) { return e }
-var _codec = {encode: id, decode: id, buffer: true}
+const _codec = { encode: id, decode: id, buffer: true }
 
 module.exports = function (filename, opts) {
   const cache = new Cache(1024) // this is potentially 65mb!
@@ -268,7 +269,7 @@ module.exports = function (filename, opts) {
             if (stream.cursor === -1)
               stream.cursor = 0
             else // the cursor still at last position
-              stream.skipFirst = true
+              stream.skipNext = true
 
             stream.writing = true
             stream.resume()

@@ -18,7 +18,7 @@ function Stream (blocks, opts) {
   this.hasWritten = false
   this.writing = false
   this.ended = false
-  this.skipFirst = false
+  this.skipNext = false
 
   this.opts = opts
   this._resumeCallback = this._resumeCallback.bind(this)
@@ -39,8 +39,7 @@ Stream.prototype._ready = function () {
 
   if (this.cursor < 0) this.cursor = 0
 
-  if (this.opts.gt >= 0)
-    this.skipFirst = true
+  if (this.opts.gt >= 0) this.skipNext = true
 
   if (!this.live && this.cursor === 0 && this.blocks.since.value === -1)
     this.ended = true
@@ -66,10 +65,9 @@ Stream.prototype._handleBlock = function(block) {
   while (true) {
     if (this.sink.paused) return null
     const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
-    const o = this.cursor
 
-    if (this.skipFirst) {
-      this.skipFirst = false
+    if (this.skipNext) {
+      this.skipNext = false
 
       if (offset > 0) {
         this.cursor = offset
@@ -84,6 +82,8 @@ Stream.prototype._handleBlock = function(block) {
     }
 
     this.count++
+
+    const o = this.cursor
 
     if (
       (this.min === null || this.min < o || this.min_inclusive === o) &&
