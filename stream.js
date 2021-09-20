@@ -151,8 +151,6 @@ Stream.prototype.resume = function () {
 }
 
 Stream.prototype.abort = function (err) {
-  //only thing to do is unsubscribe from live stream.
-  //but append isn't implemented yet...
   this.ended = err || true
   const i = this.blocks.streams.indexOf(this)
   if (~i) this.blocks.streams.splice(i, 1)
