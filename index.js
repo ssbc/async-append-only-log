@@ -316,7 +316,7 @@ module.exports = function (filename, opts) {
   }
 
   function onReady(fn) {
-    if (latestBlock != null) fn()
+    if (latestBlock !== null) fn()
     else waiting.push(fn)
   }
 
