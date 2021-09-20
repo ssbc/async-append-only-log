@@ -195,12 +195,12 @@ module.exports = function (filename, opts) {
     })
   }
 
-  function appendFrame(buffer, data, offset) {
+  function appendRecord(buffer, data, offset) {
     buffer.writeUInt16LE(data.length, offset)
     data.copy(buffer, offset+2)
   }
 
-  function frameSize(buffer) {
+  function recordSize(buffer) {
     return buffer.length + 2
   }
 
@@ -209,10 +209,10 @@ module.exports = function (filename, opts) {
     if (typeof encodedData === 'string')
       encodedData = Buffer.from(encodedData)
 
-    if (frameSize(encodedData) + 2 > blockSize)
+    if (recordSize(encodedData) + 2 > blockSize)
       throw new Error("data larger than block size")
 
-    if (nextWriteBlockOffset + frameSize(encodedData) + 2 > blockSize)
+    if (nextWriteBlockOffset + recordSize(encodedData) + 2 > blockSize)
     {
       // doesn't fit
       const buffer = Buffer.alloc(blockSize)
@@ -222,10 +222,10 @@ module.exports = function (filename, opts) {
       debug("data doesn't fit current block, creating new")
     }
 
-    appendFrame(latestBlock, encodedData, nextWriteBlockOffset)
+    appendRecord(latestBlock, encodedData, nextWriteBlockOffset)
     cache.set(latestBlockIndex, latestBlock) // update cache
     const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
-    nextWriteBlockOffset += frameSize(encodedData)
+    nextWriteBlockOffset += recordSize(encodedData)
     blocksToBeWritten.set(latestBlockIndex, { block: latestBlock, fileOffset })
     scheduleWrite()
     debug("data inserted at offset %d", fileOffset)
