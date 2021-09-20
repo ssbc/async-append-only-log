@@ -126,7 +126,7 @@ module.exports = function (filename, opts) {
     } else {
       debug("getting offset %d from disc", offset)
       raf.read(blockStart, blockSize, (err, buffer) => {
-        cache.set(getBlockIndex(offset), buffer)
+        cache.set(blockIndex, buffer)
         cb(err, buffer)
       })
     }
