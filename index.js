@@ -3,6 +3,7 @@ const RAF = require('polyraf')
 const Obv = require('obz')
 const debounce = require('lodash.debounce')
 const debug = require('debug')("async-flumelog")
+const fs = require('fs')
 
 const Stream = require("./stream")
 
@@ -77,6 +78,19 @@ module.exports = function (filename, opts) {
     return (getBlockIndex(offset) + 1) * blockSize
   }
 
+  function writeWithFSync(offset, block, successValue, cb) {
+    raf.write(offset, block, (err) => {
+      if (err) return cb(err)
+
+      if (raf.fd) {
+        fs.fsync(raf.fd, (err) => {
+          if (err) return cb(err)
+          else cb(null, successValue)
+        })
+      } else cb(null, successValue)
+    })
+  }
+
   function fixBlock(buffer, i, offset, lastOk, cb) {
     debug("found record that does not validate, fixing last block", i)
 
@@ -84,9 +98,7 @@ module.exports = function (filename, opts) {
     const newBlock = Buffer.alloc(blockSize)
     goodData.copy(newBlock, 0)
 
-    raf.write(offset, newBlock, () => {
-      cb(null, lastOk)
-    })
+    writeWithFSync(offset, newBlock, lastOk, cb)
   }
 
   function getLastGoodRecord(buffer, offset, cb) {
@@ -191,7 +203,7 @@ module.exports = function (filename, opts) {
       nullBytes.copy(buffer, recordOffset+2)
 
       // we write directly here to make normal write simpler
-      raf.write(offset - recordOffset, buffer, cb)
+      writeWithFSync(offset - recordOffset, buffer, null, cb)
     })
   }
 
@@ -256,7 +268,7 @@ module.exports = function (filename, opts) {
 
     debug("writing block of size: %d, to offset: %d",
           block.length, blockIndex * blockSize)
-    raf.write(blockIndex * blockSize, block, (err) => {
+    writeWithFSync(blockIndex * blockSize, block, null, (err) => {
       const drainsBefore = (waitingDrain.get(blockIndex) || []).slice(0)
       writingBlockIndex = -1
       if (err) {
