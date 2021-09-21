@@ -4,6 +4,7 @@ const Obv = require('obz')
 const debounce = require('lodash.debounce')
 const debug = require('debug')("async-flumelog")
 const fs = require('fs')
+const mutexify = require('mutexify')
 
 const Stream = require("./stream")
 
@@ -78,16 +79,20 @@ module.exports = function (filename, opts) {
     return (getBlockIndex(offset) + 1) * blockSize
   }
 
+  const writeLock = mutexify()
+  
   function writeWithFSync(offset, block, successValue, cb) {
-    raf.write(offset, block, (err) => {
-      if (err) return cb(err)
+    writeLock((unlock) => {
+      raf.write(offset, block, (err) => {
+        if (err) return unlock(cb, err)
 
-      if (raf.fd) {
-        fs.fsync(raf.fd, (err) => {
-          if (err) return cb(err)
-          else cb(null, successValue)
-        })
-      } else cb(null, successValue)
+        if (raf.fd) {
+          fs.fsync(raf.fd, (err) => {
+            if (err) unlock(cb, err)
+            else unlock(cb, null, successValue)
+          })
+        } else unlock(cb, null, successValue)
+      })
     })
   }
 
