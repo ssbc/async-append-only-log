@@ -263,6 +263,52 @@ module.exports = function (filename, opts) {
       cb(null, appendSingle(data))
   }
 
+  function appendTransaction(dataArray, cb) {
+    if (!Array.isArray(dataArray))
+      return cb(new Error("appendTransaction expects first argument to be an array"))
+
+    let size = 0
+    const encodedDataArray = dataArray.map(data => {
+      let encodedData = codec.encode(data)
+      if (typeof encodedData === 'string')
+        encodedData = Buffer.from(encodedData)
+      size += recordSize(encodedData)
+      return encodedData
+    })
+
+    // we always leave 2 bytes at the end as the last record must be
+    // followed by a 0 (length) to signal end of record
+    size += 2
+
+    if (size > blockSize)
+      return cb(new Error("data larger than block size"))
+
+    if (nextWriteBlockOffset + size > blockSize)
+    {
+      // doesn't fit
+      const buffer = Buffer.alloc(blockSize)
+      latestBlock = buffer
+      latestBlockIndex += 1
+      nextWriteBlockOffset = 0
+      debug("data doesn't fit current block, creating new")
+    }
+
+    const fileOffsets = []
+    encodedDataArray.forEach(encodedData => {
+      appendRecord(latestBlock, encodedData, nextWriteBlockOffset)
+      cache.set(latestBlockIndex, latestBlock) // update cache
+      const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
+      fileOffsets.push(fileOffset)
+      nextWriteBlockOffset += recordSize(encodedData)
+      blocksToBeWritten.set(latestBlockIndex, { block: latestBlock, fileOffset })
+      debug("data inserted at offset %d", fileOffset)
+    })
+
+    scheduleWrite()
+
+    return cb(null, fileOffsets)
+  }
+
   const scheduleWrite = debounce(write, writeTimeout)
 
   function writeBlock(blockIndex) {
@@ -350,6 +396,7 @@ module.exports = function (filename, opts) {
     get: onLoad(get),
     del: onLoad(del),
     append: onLoad(append),
+    appendTransaction: onLoad(appendTransaction),
     close: onLoad(close),
     since,
     onReady,
