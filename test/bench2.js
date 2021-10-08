@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2021 Anders Rune Jensen
+//
+// SPDX-License-Identifier: Unlicense
+
 var FlumeLog = require('../')
 var codec = require('flumecodec')
 var toCompat = require('../compat')

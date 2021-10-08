@@ -7,6 +7,11 @@
     "type": "git",
     "url": "https://github.com/ssb-ngi-pointer/async-append-only-log"
   },
+  "files": [
+    "*.js",
+    "package.json.license",
+    "LICENSES/*"
+  ],
   "dependencies": {
     "debug": "^4.2.0",
     "hashlru": "^2.3.0",

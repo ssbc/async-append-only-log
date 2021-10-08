@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2021 Anders Rune Jensen
+//
+// SPDX-License-Identifier: LGPL-3.0-only
+
 const Cache = require('hashlru')
 const RAF = require('polyraf')
 const Obv = require('obz')

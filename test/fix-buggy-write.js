@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2021 Anders Rune Jensen
+//
+// SPDX-License-Identifier: Unlicense
+
 var tape = require('tape')
 var fs = require('fs')
 var Offset = require('../')
