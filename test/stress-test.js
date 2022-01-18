@@ -44,13 +44,17 @@ for (var run = 0; run < 10; ++run) {
         o.write = (record) => {
           const hot = tooHot()
           if (hot && !s.sink.paused) {
+            console.log("Hot in here", record.key)
             s.sink.paused = true
             hot.then(() => {
+              console.log("Wrote hot", record.key)
               originalWrite(record)
               s.sink.paused = false
               s.resume()
             })
           } else {
+            if (hot)
+              console.log("!!! Wrote while hot")
             originalWrite(record)
           }
         }
@@ -147,14 +151,17 @@ for (var run = 0; run < 10; ++run) {
         o.write = (record) => {
           const hot = tooHot()
           if (hot && !s.sink.paused) {
-            //console.log("Hot in here", hot)
+            console.log("Hot in here", s.sink, record)
             s.sink.paused = true
             hot.then(() => {
+              console.log("Wrote hot", record)
               originalWrite(record)
               s.sink.paused = false
               s.resume()
             })
           } else {
+            if (hot)
+              console.log("!!! Wrote while hot")
             originalWrite(record)
           }
         }
