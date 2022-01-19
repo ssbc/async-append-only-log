@@ -149,7 +149,7 @@ Stream.prototype._resumeCallback = function (err, block) {
     this._next()
   }
   else if (handled === null) {
-    this.writing = false
+    if (!this.live) this.writing = false
     return
   }
   else if (this.live !== true) this.abort()
