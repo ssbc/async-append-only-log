@@ -114,7 +114,7 @@ Stream.prototype._handleBlock = function(block) {
 
 Stream.prototype._resume = function () {
   if (!this.sink || this.sink.paused) {
-    this.writing = false
+    if (!this.live) this.writing = false
     return
   }
 
