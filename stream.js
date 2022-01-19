@@ -113,7 +113,10 @@ Stream.prototype._handleBlock = function(block) {
 }
 
 Stream.prototype._resume = function () {
-  if (!this.sink || this.sink.paused) return
+  if (!this.sink || this.sink.paused) {
+    if (!this.live) this.writing = false
+    return
+  }
 
   if (this.ended) {
     if (!this.sink.ended) {
@@ -145,11 +148,15 @@ Stream.prototype._resumeCallback = function (err, block) {
     this.cursor = this.blocks.getNextBlockIndex(this.cursor)
     this._next()
   }
-  else if (handled === null) return
+  else if (handled === null) {
+    if (!this.live) this.writing = false
+    return
+  }
   else if (this.live !== true) this.abort()
 }
 
 Stream.prototype.resume = function () {
+  if (!this.live && this.writing) return
   this._next = looper(this._resume.bind(this))
   this._next()
 }
