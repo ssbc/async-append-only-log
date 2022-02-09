@@ -11,22 +11,32 @@ function Stream (blocks, opts) {
   opts = opts || {}
 
   this.blocks = blocks
+
+  // configs
   this.live = !!opts.live
   this.offsets = opts.offsets !== false
   this.values = opts.values !== false
   this.limit = opts.limit || 0
 
-  this.min = this.max = this.min_inclusive = this.max_inclusive = null
-  this.cursor = -1
-  this.count = 0
+  // state machine
   this.hasWritten = false
   this.writing = false
   this.ended = false
   this.skipNext = false
 
+  // these are properly initialized in _ready
+  this.min = this.max = this.min_inclusive = this.max_inclusive = null
+  this.cursor = -1
+
+  // used together with limit
+  this.count = 0
+
+  // needed in _ready
   this.opts = opts
+
   this._resumeCallback = this._resumeCallback.bind(this)
   this._resume = this._resume.bind(this)
+
   this.blocks.onReady(this._ready.bind(this))
 }
 
