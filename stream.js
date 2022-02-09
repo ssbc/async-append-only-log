@@ -30,8 +30,15 @@ function Stream (blocks, opts) {
   this.ended = false
   this.skipNext = false
 
-  // these are properly initialized in _ready
-  this.min = this.max = this.min_inclusive = this.max_inclusive = null
+  this.min = ltgt.lowerBound(opts, null)
+  if (ltgt.lowerBoundInclusive(opts))
+    this.min_inclusive = this.min
+
+  this.max = ltgt.upperBound(opts, null)
+  if (ltgt.upperBoundInclusive(opts))
+    this.max_inclusive = this.max
+
+  // this is properly initialized when this.blocks is ready
   this.cursor = -1
 
   // used together with limit
@@ -47,14 +54,6 @@ function Stream (blocks, opts) {
 }
 
 Stream.prototype._ready = function () {
-  this.min = ltgt.lowerBound(this.opts, null)
-  if (ltgt.lowerBoundInclusive(this.opts))
-    this.min_inclusive = this.min
-
-  this.max = ltgt.upperBound(this.opts, null)
-  if (ltgt.upperBoundInclusive(this.opts))
-    this.max_inclusive = this.max
-
   //note: cursor has default of the current length or zero.
   this.cursor = ltgt.lowerBound(this.opts, 0)
 
