@@ -26,6 +26,7 @@ function Stream (blocks, opts) {
 
   this.opts = opts
   this._resumeCallback = this._resumeCallback.bind(this)
+  this._resume = this._resume.bind(this)
   this.blocks.onReady(this._ready.bind(this))
 }
 
@@ -157,7 +158,7 @@ Stream.prototype._resumeCallback = function (err, block) {
 
 Stream.prototype.resume = function () {
   if (!this.live && this.writing) return
-  this._next = looper(this._resume.bind(this))
+  this._next = looper(this._resume)
   this._next()
 }
 
