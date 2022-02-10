@@ -19,16 +19,14 @@ function Stream (blocks, opts) {
   this.blocks = blocks
 
   // configs
-  this.live = !!opts.live
   this.offsets = opts.offsets !== false
   this.values = opts.values !== false
   this.limit = opts.limit || 0
 
   // state machine
-  this.hasWritten = false
-  this.writing = false
-  this.ended = false
-  this.skipNext = false
+  this.writing = false // resume idempotent
+  this.ended = false // abort
+  this.skipNext = false // opts.gt
 
   this.min = ltgt.lowerBound(opts, null)
   if (ltgt.lowerBoundInclusive(opts))
@@ -61,17 +59,13 @@ Stream.prototype._ready = function () {
 
   if (this.opts.gt >= 0) this.skipNext = true
 
-  if (!this.live && this.cursor === 0 && this.blocks.since.value === -1)
+  if (this.cursor === 0 && this.blocks.since.value === -1)
     this.ended = true
-
-  if (this.live && this.cursor === 0 && this.blocks.since.value === -1)
-    this.cursor = -1
 
   this.resume()
 }
 
 Stream.prototype._writeToSink = function (data) {
-  if (!this.hasWritten) this.hasWritten = true
   if (this.values) {
     if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
     else this.sink.write(data)
@@ -84,6 +78,7 @@ Stream.prototype._writeToSink = function (data) {
 Stream.prototype._handleBlock = function(block) {
   while (true) {
     if (this.sink.paused) return BLOCK_STATE.PAUSED
+
     const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
 
     if (this.skipNext) {
@@ -95,8 +90,6 @@ Stream.prototype._handleBlock = function(block) {
       } else if (offset === 0) {
         return BLOCK_STATE.GET_NEXT_BLOCK
       } else if (offset === -1) {
-        if (this.live === true)
-          this.writing = false
         return BLOCK_STATE.END_OF_STREAM
       }
     }
@@ -116,8 +109,6 @@ Stream.prototype._handleBlock = function(block) {
       else if (offset === 0) {
         return BLOCK_STATE.GET_NEXT_BLOCK
       } else if (offset === -1) {
-        if (this.live === true)
-          this.writing = false
         return BLOCK_STATE.END_OF_STREAM
       }
 
@@ -130,13 +121,13 @@ Stream.prototype._handleBlock = function(block) {
 
 Stream.prototype._resume = function () {
   if (!this.sink || this.sink.paused) {
-    if (!this.live) this.writing = false
+    this.writing = false
     return
   }
 
   if (this.ended) {
     if (!this.sink.ended) {
-      if (this.ended === true && !this.live) return this.abort()
+      if (this.ended === true) return this.abort()
       else if (this.sink.end)
         return this.sink.end(this.ended === true ? null : this.ended)
     }
@@ -145,9 +136,6 @@ Stream.prototype._resume = function () {
 
   if (this.cursor === -1)
     return // not ready yet
-
-  if (this.live && !this.writing && this.hasWritten)
-    return // wait for data
 
   this.writing = true
   this.blocks.getBlock(this.cursor, this._resumeCallback)
@@ -165,14 +153,15 @@ Stream.prototype._resumeCallback = function (err, block) {
     this._next()
   }
   else if (blockState === BLOCK_STATE.PAUSED) {
-    if (!this.live) this.writing = false
+    this.writing = false
     return
   }
-  else if (this.live !== true) this.abort() // END OF STREAM
+  else this.abort() // END OF STREAM
 }
 
 Stream.prototype.resume = function () {
-  if (!this.live && this.writing) return
+  if (this.writing) return
+
   this._next = looper(this._resume)
   this._next()
 }
