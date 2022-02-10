@@ -7,10 +7,18 @@ const looper = require('looper')
 
 module.exports = Stream
 
-BLOCK_STATE = Object.freeze({
+const BLOCK_STATE = Object.freeze({
   GET_NEXT_BLOCK: 0,
   END_OF_STREAM: 1,
   PAUSED: 2
+})
+
+const STREAM_STATE = Object.freeze({
+  INITIALIZING: 0,
+  SKIP_FIRST: 1,
+  RUNNING: 2,
+  PAUSED: 3,
+  ENDED: 4
 })
 
 function Stream (blocks, opts) {
@@ -23,10 +31,7 @@ function Stream (blocks, opts) {
   this.values = opts.values !== false
   this.limit = opts.limit || 0
 
-  // state machine
-  this.writing = false // resume idempotent
-  this.ended = false // abort
-  this.skipNext = false // opts.gt
+  this.state = STREAM_STATE.INITIALIZING
 
   this.min = ltgt.lowerBound(opts, null)
   if (ltgt.lowerBoundInclusive(opts))
@@ -57,10 +62,10 @@ Stream.prototype._ready = function () {
 
   if (this.cursor < 0) this.cursor = 0
 
-  if (this.opts.gt >= 0) this.skipNext = true
+  if (this.opts.gt >= 0) this.state = STREAM_STATE.SKIP_FIRST
 
   if (this.cursor === 0 && this.blocks.since.value === -1)
-    this.ended = true
+    this.state = STREAM_STATE.ENDED
 
   this.resume()
 }
@@ -81,8 +86,8 @@ Stream.prototype._handleBlock = function(block) {
 
     const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
 
-    if (this.skipNext) {
-      this.skipNext = false
+    if (this.state === STREAM_STATE.SKIP_FIRST) {
+      this.state = STREAM_STATE.RUNNING
 
       if (offset > 0) {
         this.cursor = offset
@@ -121,23 +126,19 @@ Stream.prototype._handleBlock = function(block) {
 
 Stream.prototype._resume = function () {
   if (!this.sink || this.sink.paused) {
-    this.writing = false
+    this.state = STREAM_STATE.PAUSED
     return
   }
 
-  if (this.ended) {
-    if (!this.sink.ended) {
-      if (this.ended === true) return this.abort()
-      else if (this.sink.end)
-        return this.sink.end(this.ended === true ? null : this.ended)
-    }
+  if (this.state === STREAM_STATE.ENDED) {
+    if (!this.sink.ended) this.abort()
     return
   }
 
-  if (this.cursor === -1)
+  if (this.state === STREAM_STATE.INITIALIZING)
     return // not ready yet
 
-  this.writing = true
+  this.state = STREAM_STATE.RUNNING
   this.blocks.getBlock(this.cursor, this._resumeCallback)
 }
 
@@ -153,21 +154,21 @@ Stream.prototype._resumeCallback = function (err, block) {
     this._next()
   }
   else if (blockState === BLOCK_STATE.PAUSED) {
-    this.writing = false
+    this.state = STREAM_STATE.PAUSED
     return
   }
   else this.abort() // END OF STREAM
 }
 
 Stream.prototype.resume = function () {
-  if (this.writing) return
+  if (this.state === STREAM_STATE.RUNNING) return
 
   this._next = looper(this._resume)
   this._next()
 }
 
 Stream.prototype.abort = function (err) {
-  this.ended = err || true
+  this.state = STREAM_STATE.ENDED
   const i = this.blocks.streams.indexOf(this)
   if (~i) this.blocks.streams.splice(i, 1)
   if (!this.sink.ended && this.sink.end) {
