@@ -201,3 +201,82 @@ for (var run = 0; run < 10; ++run) {
     })
   })
 }
+
+for (var run = 0; run < 10; ++run) {
+  tape('resume stress', function (t) {
+    const filename = '/tmp/async-flumelog-live-stress.log'
+
+    try { fs.unlinkSync(filename) } catch (_) {}
+    var db = Log(filename, {
+      blockSize: 64*1024,
+      writeTimeout: 10,
+      codec: require('flumecodec/json')
+    })
+
+    const originalStream = db.stream
+    db.stream = function (opts) {
+      const tooHot = TooHot({ceiling: 90, wait: 100, maxPause: Infinity})
+      const s = originalStream(opts)
+      const originalPipe = s.pipe.bind(s)
+      s.pipe = function pipe(o) {
+        let originalWrite = o.write.bind(o)
+        o.write = (record) => {
+          const hot = tooHot()
+          if (hot && !s.sink.paused) {
+            //console.log("Hot in here", hot)
+            s.sink.paused = true
+            hot.then(() => {
+              originalWrite(record)
+              s.sink.paused = false
+              s.resume()
+            })
+          } else {
+            originalWrite(record)
+          }
+        }
+        return originalPipe(o)
+      }
+      return s
+    }
+
+    var sink = collect(function () {
+      throw new Error('live stream should not end')
+    })
+    const stream = db.stream({live: true, offsets: false})
+    stream.pipe(sink)
+
+    var data = [], latestOffset = 0
+    for (var i = 0; i < items; i++) {
+      const d = {
+        key: '#'+i,
+        value: {
+          foo: Math.random(), bar: Date.now()
+        }
+      }
+      data.push(d)
+      db.append(d, function (err, offset) {
+        if (offset > latestOffset)
+          latestOffset = offset
+      })
+    }
+
+    function checkStreamDone() {
+      stream.resume() // stress test this
+
+      if (sink.array.length === data.length) {
+        t.deepEqual(sink.array, data)
+        t.end()
+      } else
+        setTimeout(checkStreamDone, randomIntFromInterval(50,200))
+    }
+
+    var remove = db.since(function (v) {
+      if(v < latestOffset) return
+      if (remove) remove()
+      // this is crazy, db.since is set first, then streams are
+      // resumed. So we need to wait for the stream to resume and
+      // finish before we can check that we got everything
+      setTimeout(checkStreamDone, 200)
+    })
+  })
+}
