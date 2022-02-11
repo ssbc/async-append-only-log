@@ -184,8 +184,8 @@ for (var run = 0; run < 10; ++run) {
     }
 
     function checkStreamDone() {
-      if (!db.streams[0].writing) {
-        t.deepEqual(sink.array.length, data.length)
+      if (sink.array.length === data.length) {
+        t.deepEqual(sink.array, data)
         t.end()
       } else
         setTimeout(checkStreamDone, 200)
