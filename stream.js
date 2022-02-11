@@ -94,7 +94,6 @@ Stream.prototype._handleBlock = function(block) {
   while (true) {
     if (this.sink.paused) return BLOCK_STATE.PAUSED
 
-    // we could send in skip!
     const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
 
     if (this.skip_next) {
@@ -103,11 +102,11 @@ Stream.prototype._handleBlock = function(block) {
       if (offset > 0) {
         this.cursor = offset
         continue
-      } else if (offset === 0) {
-        return BLOCK_STATE.GET_NEXT_BLOCK
-      } else if (offset === -1) {
-        return BLOCK_STATE.END_OF_STREAM
       }
+      else if (offset === 0)
+        return BLOCK_STATE.GET_NEXT_BLOCK
+      else if (offset === -1)
+        return BLOCK_STATE.END_OF_STREAM
     }
 
     this.count++
@@ -122,11 +121,10 @@ Stream.prototype._handleBlock = function(block) {
 
       if (offset > 0)
         this.cursor = offset
-      else if (offset === 0) {
+      else if (offset === 0)
         return BLOCK_STATE.GET_NEXT_BLOCK
-      } else if (offset === -1) {
+      else if (offset === -1)
         return BLOCK_STATE.END_OF_STREAM
-      }
 
       if (this.limit > 0 && this.count >= this.limit)
         return BLOCK_STATE.END_OF_STREAM
