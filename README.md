@@ -49,7 +49,7 @@ using offset for the byte position of a record instead of seq.
 ## Options
 
 ```
-var OffsetLog = require('async-flumelog')
+var OffsetLog = require('async-append-only-log')
 var log = OffsetLog('/data/log', {
   blockSize: 1024,          // default is 1024*64
   codec: {encode, decode}   // defaults to no codec, expects buffers. for json use flumecodec/json
@@ -70,7 +70,7 @@ benchmarks, as it writes every message synchronously rendering the
 results invalid.
 
 ```
-async flumelog:
+async-append-only-log:
 
 name, ops/second, mb/second, ops, total-mb, seconds
 append, 923964.807, 138.002, 4620748, 690.149, 5.001
