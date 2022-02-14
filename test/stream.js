@@ -82,8 +82,8 @@ tape('single, reload', function (t) {
     t.end()
   }))
 })
-var v2 = B(0x20, 20)
 
+var v2 = B(0x20, 20)
 tape('second', function (t) {
   log.append(v2, function (err) {
     t.notOk(err)
@@ -184,7 +184,7 @@ tape('gt', function (t) {
   }))
 })
 
-tape('gt', function (t) {
+tape('gt 0', function (t) {
   log.stream({offsets: false, gt: 0}).pipe(collect(function (err, ary) {
     t.notOk(err)
     t.deepEqual(ary, [v2, v3])
