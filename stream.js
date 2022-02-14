@@ -7,55 +7,80 @@ const looper = require('looper')
 
 module.exports = Stream
 
+const BLOCK_STATE = Object.freeze({
+  GET_NEXT_BLOCK: 0,
+  END_OF_STREAM: 1,
+  PAUSED: 2
+})
+
+const STREAM_STATE = Object.freeze({
+  INITIALIZING: 0,
+  LOADED: 1,
+  RUNNING: 2,
+  PAUSED: 3,
+  ENDED: 4
+})
+
 function Stream (blocks, opts) {
   opts = opts || {}
 
   this.blocks = blocks
+
+  // configs
   this.live = !!opts.live
   this.offsets = opts.offsets !== false
   this.values = opts.values !== false
   this.limit = opts.limit || 0
 
-  this.min = this.max = this.min_inclusive = this.max_inclusive = null
-  this.cursor = -1
-  this.count = 0
-  this.hasWritten = false
-  this.writing = false
-  this.ended = false
-  this.skipNext = false
+  this.state = STREAM_STATE.INITIALIZING
 
+  this.min = ltgt.lowerBound(opts, null)
+  if (ltgt.lowerBoundInclusive(opts))
+    this.min_inclusive = this.min
+
+  this.max = ltgt.upperBound(opts, null)
+  if (ltgt.upperBoundInclusive(opts))
+    this.max_inclusive = this.max
+
+  // this is properly initialized when this.blocks is ready
+  this.cursor = -1
+
+  // used together with limit
+  this.count = 0
+
+  // used for live (new values) & gt
+  this.skip_next = false
+
+  // needed in _ready
   this.opts = opts
+
   this._resumeCallback = this._resumeCallback.bind(this)
+  this._resume = this._resume.bind(this)
+
   this.blocks.onReady(this._ready.bind(this))
 }
 
 Stream.prototype._ready = function () {
-  this.min = ltgt.lowerBound(this.opts, null)
-  if (ltgt.lowerBoundInclusive(this.opts))
-    this.min_inclusive = this.min
-
-  this.max = ltgt.upperBound(this.opts, null)
-  if (ltgt.upperBoundInclusive(this.opts))
-    this.max_inclusive = this.max
-
   //note: cursor has default of the current length or zero.
   this.cursor = ltgt.lowerBound(this.opts, 0)
 
   if (this.cursor < 0) this.cursor = 0
 
-  if (this.opts.gt >= 0) this.skipNext = true
+  if (this.opts.gt >= 0) this.skip_next = true
 
-  if (!this.live && this.cursor === 0 && this.blocks.since.value === -1)
-    this.ended = true
-
-  if (this.live && this.cursor === 0 && this.blocks.since.value === -1)
-    this.cursor = -1
+  if (this.cursor === 0 && this.blocks.since.value === -1) {
+    if (!this.live)
+      this.state = STREAM_STATE.ENDED
+    else
+      this.state = STREAM_STATE.INITIALIZING // still not ready
+  }
+  else
+    this.state = STREAM_STATE.LOADED
 
   this.resume()
 }
 
 Stream.prototype._writeToSink = function (data) {
-  if (!this.hasWritten) this.hasWritten = true
   if (this.values) {
     if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
     else this.sink.write(data)
@@ -64,25 +89,24 @@ Stream.prototype._writeToSink = function (data) {
     this.sink.write(this.cursor)
 }
 
-// returns true="next block", false="end stream", null="pause"
+// returns a new BLOCK_STATE
 Stream.prototype._handleBlock = function(block) {
   while (true) {
-    if (this.sink.paused) return null
+    if (this.sink.paused) return BLOCK_STATE.PAUSED
+
     const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
 
-    if (this.skipNext) {
-      this.skipNext = false
+    if (this.skip_next) {
+      this.skip_next = false
 
       if (offset > 0) {
         this.cursor = offset
         continue
-      } else if (offset === 0) {
-        return true // get next block
-      } else if (offset === -1) {
-        if (this.live === true)
-          this.writing = false
-        return false
       }
+      else if (offset === 0)
+        return BLOCK_STATE.GET_NEXT_BLOCK
+      else if (offset === -1)
+        return BLOCK_STATE.END_OF_STREAM
     }
 
     this.count++
@@ -97,43 +121,34 @@ Stream.prototype._handleBlock = function(block) {
 
       if (offset > 0)
         this.cursor = offset
-      else if (offset === 0) {
-        return true // get next block
-      } else if (offset === -1) {
-        if (this.live === true)
-          this.writing = false
-        return false
-      }
+      else if (offset === 0)
+        return BLOCK_STATE.GET_NEXT_BLOCK
+      else if (offset === -1)
+        return BLOCK_STATE.END_OF_STREAM
 
       if (this.limit > 0 && this.count >= this.limit)
-        return false
+        return BLOCK_STATE.END_OF_STREAM
     } else
-      return false
+      return BLOCK_STATE.END_OF_STREAM
   }
 }
 
 Stream.prototype._resume = function () {
+  if (this.state === STREAM_STATE.ENDED) {
+    if (this.sink && !this.sink.ended) this.abort()
+    return
+  }
+
   if (!this.sink || this.sink.paused) {
-    if (!this.live) this.writing = false
+    this.state = STREAM_STATE.PAUSED
     return
   }
 
-  if (this.ended) {
-    if (!this.sink.ended) {
-      if (this.ended === true && !this.live) return this.abort()
-      else if (this.sink.end)
-        return this.sink.end(this.ended === true ? null : this.ended)
-    }
-    return
-  }
-
-  if (this.cursor === -1)
+  if (this.state === STREAM_STATE.INITIALIZING)
     return // not ready yet
 
-  if (this.live && !this.writing && this.hasWritten)
-    return // wait for data
+  this.state = STREAM_STATE.RUNNING
 
-  this.writing = true
   this.blocks.getBlock(this.cursor, this._resumeCallback)
 }
 
@@ -143,26 +158,40 @@ Stream.prototype._resumeCallback = function (err, block) {
     return
   }
 
-  const handled = this._handleBlock(block)
-  if (handled === true) {
+  const blockState = this._handleBlock(block)
+  if (blockState === BLOCK_STATE.GET_NEXT_BLOCK) {
     this.cursor = this.blocks.getNextBlockIndex(this.cursor)
     this._next()
   }
-  else if (handled === null) {
-    if (!this.live) this.writing = false
-    return
+  else if (blockState === BLOCK_STATE.PAUSED) {
+    this.state = STREAM_STATE.PAUSED
   }
-  else if (this.live !== true) this.abort()
+  else if (blockState === BLOCK_STATE.END_OF_STREAM) {
+    if (!this.live)
+      this.abort()
+    else {
+      this.state = STREAM_STATE.PAUSED
+      this.skip_next = true
+    }
+  }
 }
 
 Stream.prototype.resume = function () {
-  if (!this.live && this.writing) return
-  this._next = looper(this._resume.bind(this))
+  if (this.state === STREAM_STATE.RUNNING) return
+
+  this._next = looper(this._resume)
   this._next()
 }
 
+Stream.prototype.liveResume = function () {
+  if (this.state === STREAM_STATE.INITIALIZING)
+    this.state = STREAM_STATE.LOADED
+
+  this.resume()
+}
+
 Stream.prototype.abort = function (err) {
-  this.ended = err || true
+  this.state = STREAM_STATE.ENDED
   const i = this.blocks.streams.indexOf(this)
   if (~i) this.blocks.streams.splice(i, 1)
   if (!this.sink.ended && this.sink.end) {

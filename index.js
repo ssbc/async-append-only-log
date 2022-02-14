@@ -334,15 +334,7 @@ module.exports = function (filename, opts) {
 
         // write values to live streams
         self.streams.forEach(stream => {
-          if (!stream.ended && stream.live && !stream.writing) {
-            if (stream.cursor === -1)
-              stream.cursor = 0
-            else // the cursor still at last position
-              stream.skipNext = true
-
-            stream.writing = true
-            stream.resume()
-          }
+          if (stream.live) stream.liveResume()
         })
 
         debug("draining the waiting queue for %d, items: %d", blockIndex, drainsBefore.length)
