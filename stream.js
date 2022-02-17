@@ -139,13 +139,13 @@ Stream.prototype._resume = function () {
     return
   }
 
+  if (this.state === STREAM_STATE.INITIALIZING)
+    return // not ready yet
+
   if (!this.sink || this.sink.paused) {
     this.state = STREAM_STATE.PAUSED
     return
   }
-
-  if (this.state === STREAM_STATE.INITIALIZING)
-    return // not ready yet
 
   this.state = STREAM_STATE.RUNNING
 
