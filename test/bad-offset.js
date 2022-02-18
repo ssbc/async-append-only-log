@@ -11,9 +11,9 @@ tape('NaN', function (t) {
   try { fs.unlinkSync(file) } catch (_) {}
   var db = Log(file, {blockSize: 2*1024})
 
-  var v1 = Buffer.from('testing')
-  
-  db.append(v1, function (err, offset1) {
+  var msg1 = Buffer.from('testing')
+
+  db.append(msg1, function (err, offset1) {
     if(err) throw err
     t.equal(offset1, 0)
     db.get(NaN, function (err, b) {
@@ -28,9 +28,9 @@ tape('-1', function (t) {
   try { fs.unlinkSync(file) } catch (_) {}
   var db = Log(file, {blockSize: 2*1024})
 
-  var v1 = Buffer.from('testing')
+  var msg2 = Buffer.from('testing')
 
-  db.append(v1, function (err, offset1) {
+  db.append(msg2, function (err, offset1) {
     if(err) throw err
     t.equal(offset1, 0)
     db.get(-1, function (err, b) {

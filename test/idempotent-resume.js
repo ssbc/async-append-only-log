@@ -13,7 +13,7 @@ try {
 } catch (_) {}
 var log = Log(filename, {blockSize: 64 * 1024})
 
-function B(fill, length) {
+function Buf(fill, length) {
   var b = Buffer.alloc(length)
   b.fill(fill)
   return b
@@ -25,7 +25,7 @@ const getRecordLength = (i) => 1 + (i % 500)
 tape('populate', function (t) {
   const records = Array(TOTAL_RECORDS)
     .fill(null)
-    .map((x, i) => B(0x10, getRecordLength(i)))
+    .map((x, i) => Buf(0x10, getRecordLength(i)))
   log.append(records, () => {
     log.onDrain(() => {
       t.end()

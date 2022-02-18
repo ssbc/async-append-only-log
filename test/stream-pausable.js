@@ -11,7 +11,7 @@ const filename = '/tmp/dsf-test-stream-pause.log'
 try { fs.unlinkSync(filename) } catch (_) {}
 var log = Log(filename, {blockSize: 64*1024})
 
-function B (fill, length) {
+function Buf (fill, length) {
   var b = Buffer.alloc(length)
   b.fill(fill)
   return b
@@ -21,7 +21,7 @@ function collect (cb) {
   return {
     array: [],
     paused: false,
-    write: function (v) { this.array.push(v) },
+    write: function (value) { this.array.push(value) },
     end: function (err) {
       this.ended = err || true
       cb(err, this.array)
@@ -29,11 +29,11 @@ function collect (cb) {
   }
 }
 
-var v1 = B(0x10, 100);
+var msg1 = Buf(0x10, 100);
 tape('populate', function (t) {
   let i = 0;
   (function next() {
-    log.append(v1, function (err) {
+    log.append(msg1, function (err) {
       i++
       if (i < 1000) next()
       else {
@@ -56,9 +56,9 @@ tape('pausable', function (t) {
   t.timeoutAfter(50000)
   log.stream({offsets: false}).pipe(sink = {
     paused: false,
-    write: function(data) {
+    write: function(buf) {
       if (sink.paused) t.fail('should not write sink when it is paused')
-      if (data.compare(v1) !== 0) t.fail('record does not match v1')
+      if (buf.compare(msg1) !== 0) t.fail('record does not match v1')
 
       sink.paused = true
       setTimeout(() => {

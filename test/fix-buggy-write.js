@@ -20,8 +20,8 @@ function collect (cb) {
 
 var file = '/tmp/ds-test_restart.log'
 
-var v1 = { v: 'hello world hello world' } 
-var v2 = { v: 'hello world hello world 2' }
+var msg1 = { text: 'hello world hello world' }
+var msg2 = { text: 'hello world hello world 2' }
 
 tape('simple', function (t) {
   try { fs.unlinkSync(file) } catch (_) {}
@@ -29,17 +29,17 @@ tape('simple', function (t) {
     block: 16*1024,
     codec: require('flumecodec/json')
   })
-  
-  db.append(v1, function (err, offset1) {
+
+  db.append(msg1, function (err, offset1) {
     if(err) throw err
     t.equal(offset1, 0)
-    db.append(v2, function (err, offset2) {
+    db.append(msg2, function (err, offset2) {
       if(err) throw err
-      t.equal(offset2, 33)
+      t.equal(offset2, 36)
 
       db.onDrain(() => {
         db.stream({offsets: false}).pipe(collect(function (err, ary) {
-          t.deepEqual(ary, [v1, v2])
+          t.deepEqual(ary, [msg1, msg2])
           t.end()
         }))
       })
@@ -55,7 +55,7 @@ tape('simple reread', function (t) {
 
   db.onReady(() => {
     db.stream({offsets: false}).pipe(collect(function (err, ary) {
-      t.deepEqual(ary, [v1, v2])
+      t.deepEqual(ary, [msg1, msg2])
       t.end()
     }))
   })
