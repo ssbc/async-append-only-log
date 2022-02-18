@@ -18,7 +18,7 @@ function randomStr(length) {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   const charactersLength = characters.length;
   for (let i = 0; i < length; ++i)
-    result += characters.charAt(Math.floor(Math.random() * 
+    result += characters.charAt(Math.floor(Math.random() *
                                            charactersLength))
   return result
 }
@@ -27,13 +27,13 @@ for (var run = 0; run < 10; ++run) {
   tape('basic stress', function (t) {
     const filename = '/tmp/async-flumelog-basic-stress.log'
     const blockSize = randomIntFromInterval(12 * 1024, 64 * 1024)
-    
+
     try { fs.unlinkSync(filename) } catch (_) {}
     var db = Log(filename, {
       blockSize,
       codec: require('flumecodec/json')
     })
-    
+
     const originalStream = db.stream
     db.stream = function (opts) {
       const tooHot = TooHot({ceiling: 50, wait: 100, maxPause: Infinity})
@@ -79,14 +79,14 @@ for (var run = 0; run < 10; ++run) {
         if(v < offset) return
         remove()
 
-        var result = []
+        var result1 = []
         var stream1Done = false, stream2Done = false
-        
+
         db.stream({offsets: false}).pipe({
           paused: false,
-          write: function (e) { result.push(e) },
+          write: function (value) { result1.push(value) },
           end: function() {
-            t.equal(result.length, data.length)
+            t.equal(result1.length, data.length)
             //t.deepEqual(data, result)
             if (stream2Done)
               db.close(t.end)
@@ -99,7 +99,7 @@ for (var run = 0; run < 10; ++run) {
 
         db.stream({offsets: false}).pipe({
           paused: false,
-          write: function (e) { result2.push(e) },
+          write: function (value) { result2.push(value) },
           end: function() {
             t.equal(result2.length, data.length)
             //t.deepEqual(data, result)
@@ -118,7 +118,7 @@ function collect (cb) {
   return {
     array: [],
     paused: false,
-    write: function (v) { this.array.push(v) },
+    write: function (value) { this.array.push(value) },
     end: function (err) {
       this.ended = err || true
       cb(err, this.array)
@@ -191,8 +191,8 @@ for (var run = 0; run < 10; ++run) {
         setTimeout(checkStreamDone, 200)
     }
 
-    var remove = db.since(function (v) {
-      if(v < latestOffset) return
+    var remove = db.since(function (offset) {
+      if(offset < latestOffset) return
       if (remove) remove()
       // this is crazy, db.since is set first, then streams are
       // resumed. So we need to wait for the stream to resume and
@@ -270,8 +270,8 @@ for (var run = 0; run < 10; ++run) {
         setTimeout(checkStreamDone, randomIntFromInterval(50,200))
     }
 
-    var remove = db.since(function (v) {
-      if(v < latestOffset) return
+    var remove = db.since(function (offset) {
+      if(offset < latestOffset) return
       if (remove) remove()
       // this is crazy, db.since is set first, then streams are
       // resumed. So we need to wait for the stream to resume and

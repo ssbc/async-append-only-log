@@ -59,8 +59,8 @@ function ordered_series (db, N, _, cb) {
   var n = 0, i = 0
   ;(function _next () {
     var key = '#'+(i++)
-    db.index.get(i, function (err, v) {
-      if(v.key != key) return cb('benchmark failed: incorrect key returned')
+    db.index.get(i, function (err, msg) {
+      if(msg.key !== key) return cb('benchmark failed: incorrect key returned')
       if(i === n) cb(null, N)
       else setImmediate(_next)
     })
@@ -71,7 +71,7 @@ function random_series (db, N, _, cb) {
   ;(function get(i) {
     if(i >= N) return cb(null, N)
 
-    db.index.get('#'+~~(Math.random()*N), function (err, data) {
+    db.index.get('#'+~~(Math.random()*N), function (err, value) {
       if(err) return cb(err)
       setImmediate(function () { get(i+1) })
     })
@@ -84,7 +84,7 @@ function random_para (db, N, _, cb) {
   for(var i = 0; i < N; i++)
     db.index.get('#'+~~(Math.random()*N), next)
 
-  function next (err, v) {
+  function next (err, value) {
     if(err && n >= 0) {
       n = -1; cb(err)
     }
@@ -125,8 +125,8 @@ function create(dir, seed) {
   })
 
   return Flume(toCompat(raf))
-    .use('index', Index(1, function (e) {
-      return [e.key]
+    .use('index', Index(1, function (msg) {
+      return [msg.key]
     }))
 }
 
@@ -140,8 +140,8 @@ function refresh () {
     db.close(function () {
       db = create(dir, seed)
       var start = Date.now()
-      var rm = db.index.since(function (v) {
-        if(v === db.since.value) {
+      var rm = db.index.since(function (msg) {
+        if(msg === db.since.value) {
           console.error('reload', Date.now()-start)
           rm()
           cb()

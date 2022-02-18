@@ -8,7 +8,7 @@ const Offset = require('../')
 
 const file = '/tmp/ds-test_drain_since.log'
 
-const v1 = { v: 'hello world hello world' }
+const msg1 = { text: 'hello world hello world' }
 
 tape('check since after drain', async (t) => {
   for (var i = 0; i < 1000; ++i) {
@@ -21,7 +21,7 @@ tape('check since after drain', async (t) => {
 
     await new Promise((resolve, reject) => {
       db.onReady(() => {
-        db.append(v1, (err, offset1) => {
+        db.append(msg1, (err, offset1) => {
           if (err) reject(err)
 
           setTimeout(() => {
