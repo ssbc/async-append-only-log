@@ -384,6 +384,19 @@ module.exports = function (filename, opts) {
     else waiting.push(fn)
   }
 
+  function onDrain(fn) {
+    if (blocksToBeWritten.size === 0 && writingBlockIndex === -1) fn()
+    else {
+      const latestBlockIndex =
+        blocksToBeWritten.size > 0
+          ? last(blocksToBeWritten.keys())
+          : writingBlockIndex
+      const drains = waitingDrain.get(latestBlockIndex) || []
+      drains.push(fn)
+      waitingDrain.set(latestBlockIndex, drains)
+    }
+  }
+
   function last(iterable) {
     let res = null
     for (let x of iterable) res = x
@@ -391,38 +404,27 @@ module.exports = function (filename, opts) {
   }
 
   return (self = {
+    // Public API:
     get: onLoad(get),
     del: onLoad(del),
     append: onLoad(append),
     appendTransaction: onLoad(appendTransaction),
     close: onLoad(close),
+    onDrain: onLoad(onDrain),
     since,
-    onReady,
-
-    onDrain: onLoad(function (fn) {
-      if (blocksToBeWritten.size === 0 && writingBlockIndex === -1) fn()
-      else {
-        const latestBlockIndex =
-          blocksToBeWritten.size > 0
-            ? last(blocksToBeWritten.keys())
-            : writingBlockIndex
-        const drains = waitingDrain.get(latestBlockIndex) || []
-        drains.push(fn)
-        waitingDrain.set(latestBlockIndex, drains)
-      }
-    }),
-
-    filename,
-
-    // streaming
-    getNextBlockIndex,
-    getDataNextOffset,
-    getBlock,
-    stream: function (opts) {
+    stream(opts) {
       const stream = new Stream(self, opts)
       self.streams.push(stream)
       return stream
     },
+
+    // Internals:
+    filename,
+    // Internals needed for ./stream.js:
+    onReady,
+    getNextBlockIndex,
+    getDataNextOffset,
+    getBlock,
     streams: [],
   })
 }
