@@ -8,8 +8,10 @@ var Log = require('../')
 
 const filename = '/tmp/dsf-test-stream.log'
 
-try { fs.unlinkSync(filename) } catch (_) {}
-var log = Log(filename, {blockSize: 64*1024})
+try {
+  fs.unlinkSync(filename)
+} catch (_) {}
+var log = Log(filename, { blockSize: 64 * 1024 })
 
 function Buf(fill, length) {
   var b = Buffer.alloc(length)
@@ -17,23 +19,27 @@ function Buf(fill, length) {
   return b
 }
 
-function collect (cb) {
+function collect(cb) {
   return {
     array: [],
     paused: false,
-    write: function (value) { this.array.push(value) },
+    write: function (value) {
+      this.array.push(value)
+    },
     end: function (err) {
       this.ended = err || true
       cb(err, this.array)
-    }
+    },
   }
 }
 
 tape('empty', function (t) {
-  log.stream({offsets: false}).pipe({
+  log.stream({ offsets: false }).pipe({
     paused: false,
-    write: function () { throw new Error('should be empty') },
-    end: t.end
+    write: function () {
+      throw new Error('should be empty')
+    },
+    end: t.end,
   })
 })
 
@@ -42,11 +48,13 @@ tape('single', function (t) {
   log.append(msg1, function (err) {
     t.notOk(err)
     log.onDrain(() => {
-      log.stream({offsets: false}).pipe(collect(function (err, ary) {
-        t.notOk(err)
-        t.deepEqual(ary, [msg1])
-        t.end()
-      }))
+      log.stream({ offsets: false }).pipe(
+        collect(function (err, ary) {
+          t.notOk(err)
+          t.deepEqual(ary, [msg1])
+          t.end()
+        })
+      )
     })
   })
 })
@@ -55,32 +63,36 @@ tape('single live pausable', function (t) {
   t.timeoutAfter(500)
   let i = 0
   let sink
-  log.stream({offsets: false, live: true}).pipe(sink = {
-    paused: false,
-    write: function(buf) {
-      t.deepEqual(buf, msg1)
-      t.equal(i, 0)
-      sink.paused = true
-      setTimeout(() => {
-        sink.paused = false
-        sink.source.resume()
-      })
-      i++
-    },
-    end: function() {
-      t.fail('should not end live stream')
-    }
-  })
+  log.stream({ offsets: false, live: true }).pipe(
+    (sink = {
+      paused: false,
+      write: function (buf) {
+        t.deepEqual(buf, msg1)
+        t.equal(i, 0)
+        sink.paused = true
+        setTimeout(() => {
+          sink.paused = false
+          sink.source.resume()
+        })
+        i++
+      },
+      end: function () {
+        t.fail('should not end live stream')
+      },
+    })
+  )
   setTimeout(t.end, 300)
 })
 
 tape('single, reload', function (t) {
-  log = Log(filename, {blockSize: 64*1024})
-  log.stream({offsets: false}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [msg1])
-    t.end()
-  }))
+  log = Log(filename, { blockSize: 64 * 1024 })
+  log.stream({ offsets: false }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [msg1])
+      t.end()
+    })
+  )
 })
 
 var msg2 = Buf(0x20, 20)
@@ -88,11 +100,13 @@ tape('second', function (t) {
   log.append(msg2, function (err) {
     t.notOk(err)
     log.onDrain(() => {
-      log.stream({offsets: false}).pipe(collect(function (err, ary) {
-        t.notOk(err)
-        t.deepEqual(ary, [msg1, msg2])
-        t.end()
-      }))
+      log.stream({ offsets: false }).pipe(
+        collect(function (err, ary) {
+          t.notOk(err)
+          t.deepEqual(ary, [msg1, msg2])
+          t.end()
+        })
+      )
     })
   })
 })
@@ -103,7 +117,7 @@ tape('live', function (t) {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
-  let logStream = log.stream({live: true, offsets: false})
+  let logStream = log.stream({ live: true, offsets: false })
   logStream.pipe(sink)
   log.append(msg3, function (err) {})
   log.onDrain(function () {
@@ -115,89 +129,109 @@ tape('live', function (t) {
 })
 
 tape('offsets', function (t) {
-  log.stream({offsets: true}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [{ offset: 0, value: msg1}, { offset: 10 + 2, value: msg2 }, { offset: 10 + 2 + 20 + 2, value: msg3 }])
-    t.end()
-  }))
+  log.stream({ offsets: true }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [
+        { offset: 0, value: msg1 },
+        { offset: 10 + 2, value: msg2 },
+        { offset: 10 + 2 + 20 + 2, value: msg3 },
+      ])
+      t.end()
+    })
+  )
 })
 
 tape('pausable', function (t) {
   let i = 0
   let sink
-  log.stream({offsets: false}).pipe(sink = {
-    paused: false,
-    write: function(buf) {
-      if (sink.paused) t.fail('should not write sink when it is paused')
+  log.stream({ offsets: false }).pipe(
+    (sink = {
+      paused: false,
+      write: function (buf) {
+        if (sink.paused) t.fail('should not write sink when it is paused')
 
-      if (i === 0) {
-        t.deepEqual(buf, msg1, 'msg1')
-        sink.paused = true
-        setTimeout(() => {
-          sink.paused = false
-          sink.source.resume()
-        }, 100)
-      }
-      if (i === 1) {
-        t.deepEqual(buf, msg2, 'msg2')
-      }
-      if (i === 2) {
-        t.deepEqual(buf, msg3, 'msg3')
-      }
-      i++
-    },
-    end: function() {
-      t.end()
-    }
-  })
+        if (i === 0) {
+          t.deepEqual(buf, msg1, 'msg1')
+          sink.paused = true
+          setTimeout(() => {
+            sink.paused = false
+            sink.source.resume()
+          }, 100)
+        }
+        if (i === 1) {
+          t.deepEqual(buf, msg2, 'msg2')
+        }
+        if (i === 2) {
+          t.deepEqual(buf, msg3, 'msg3')
+        }
+        i++
+      },
+      end: function () {
+        t.end()
+      },
+    })
+  )
 })
 
 tape('limit', function (t) {
-  log.stream({offsets: false, limit: 1}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [msg1])
-    t.end()
-  }))
+  log.stream({ offsets: false, limit: 1 }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [msg1])
+      t.end()
+    })
+  )
 })
 
 tape('limit gte', function (t) {
-  log.stream({offsets: false, gte: 12, limit: 1}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [msg2])
-    t.end()
-  }))
+  log.stream({ offsets: false, gte: 12, limit: 1 }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [msg2])
+      t.end()
+    })
+  )
 })
 
 tape('gte', function (t) {
-  log.stream({offsets: false, gte: 12}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [msg2, msg3])
-    t.end()
-  }))
+  log.stream({ offsets: false, gte: 12 }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [msg2, msg3])
+      t.end()
+    })
+  )
 })
 
 tape('gt', function (t) {
-  log.stream({offsets: false, gt: 12}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [msg3])
-    t.end()
-  }))
+  log.stream({ offsets: false, gt: 12 }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [msg3])
+      t.end()
+    })
+  )
 })
 
 tape('gt 0', function (t) {
-  log.stream({offsets: false, gt: 0}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [msg2, msg3])
-    t.end()
-  }))
+  log.stream({ offsets: false, gt: 0 }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [msg2, msg3])
+      t.end()
+    })
+  )
 })
 
 tape('gt -1', function (t) {
-  log.stream({offsets: false, gt: -1}).pipe(collect(function (err, ary) {
-    t.notOk(err)
-    t.deepEqual(ary, [msg1, msg2, msg3])
-    t.end()
-  }))
+  log.stream({ offsets: false, gt: -1 }).pipe(
+    collect(function (err, ary) {
+      t.notOk(err)
+      t.deepEqual(ary, [msg1, msg2, msg3])
+      t.end()
+    })
+  )
 })
 
 tape('live gt', function (t) {
@@ -206,7 +240,11 @@ tape('live gt', function (t) {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
-  let logStream = log.stream({ live: true, offsets: false, gt: 10 + 2 + 20 + 2 })
+  let logStream = log.stream({
+    live: true,
+    offsets: false,
+    gt: 10 + 2 + 20 + 2,
+  })
   logStream.pipe(sink)
   log.append(msg4, function (err) {})
   log.onDrain(() => {
@@ -225,8 +263,10 @@ tape('live gt -1', function (t) {
   var msg6 = Buf(0x50, 60)
 
   const filename1 = '/tmp/dsf-test-stream-1.log'
-  try { fs.unlinkSync(filename1) } catch (_) {}
-  var newLog = Log(filename1, {blockSize: 64*1024})
+  try {
+    fs.unlinkSync(filename1)
+  } catch (_) {}
+  var newLog = Log(filename1, { blockSize: 64 * 1024 })
 
   var sink = collect(function (err) {
     if (err === 'tape-ended') return
@@ -257,8 +297,10 @@ tape('live gt -1', function (t) {
 tape('double live', function (t) {
   const filename = '/tmp/dsf-test-stream-2.log'
 
-  try { fs.unlinkSync(filename) } catch (_) {}
-  var log = Log(filename, {blockSize: 64*1024})
+  try {
+    fs.unlinkSync(filename)
+  } catch (_) {}
+  var log = Log(filename, { blockSize: 64 * 1024 })
 
   var i = 0
 
@@ -268,9 +310,8 @@ tape('double live', function (t) {
       if (i === 0) {
         log.append(Buf(0x20, 20), function (err) {})
         ++i
-      } else
-        t.end()
-    }
+      } else t.end()
+    },
   })
 
   log.append(Buf(0x10, 10), function (err) {})
@@ -278,12 +319,12 @@ tape('double live', function (t) {
 
 tape('close', function (t) {
   t.equal(log.streams.length, 0, 'no open streams')
-  log.stream({offsets: false}).pipe({
+  log.stream({ offsets: false }).pipe({
     paused: false,
     write: function () {},
-    end: function() {
+    end: function () {
       t.end()
-    }
+    },
   })
   log.close(() => {})
 })

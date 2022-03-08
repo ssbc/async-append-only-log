@@ -6,24 +6,28 @@ const Cache = require('hashlru')
 const RAF = require('polyraf')
 const Obv = require('obz')
 const debounce = require('lodash.debounce')
-const debug = require('debug')("async-flumelog")
+const debug = require('debug')('async-flumelog')
 const fs = require('fs')
 const mutexify = require('mutexify')
 
-const Stream = require("./stream")
+const Stream = require('./stream')
 
 // defaults
-function alwaysTrue() { return true }
-function id(e) { return e }
+function alwaysTrue() {
+  return true
+}
+function id(e) {
+  return e
+}
 const _codec = { encode: id, decode: id, buffer: true }
 
 module.exports = function (filename, opts) {
   const cache = new Cache(1024) // this is potentially 65mb!
   const raf = RAF(filename)
-  const blockSize = opts && opts.blockSize || 65536
-  const codec = opts && opts.codec || _codec
-  const writeTimeout = opts && opts.writeTimeout || 250
-  const validateRecord = opts && opts.validateRecord || alwaysTrue
+  const blockSize = (opts && opts.blockSize) || 65536
+  const codec = (opts && opts.codec) || _codec
+  const writeTimeout = (opts && opts.writeTimeout) || 250
+  const validateRecord = (opts && opts.validateRecord) || alwaysTrue
   let self
 
   // offset of last written record
@@ -39,18 +43,18 @@ module.exports = function (filename, opts) {
   let nextWriteBlockOffset = null
 
   raf.stat(function (err, stat) {
-    if (err) debug("failed to stat " + filename, err)
+    if (err) debug('failed to stat ' + filename, err)
 
     const len = stat ? stat.size : -1
 
     if (len <= 0) {
-      debug("empty file")
+      debug('empty file')
       latestBlock = Buffer.alloc(blockSize)
       latestBlockIndex = 0
       nextWriteBlockOffset = 0
       cache.set(0, latestBlock)
       since.set(-1)
-      while(waiting.length) waiting.shift()()
+      while (waiting.length) waiting.shift()()
     } else {
       raf.read(len - blockSize, blockSize, (err, buffer) => {
         if (err) throw err
@@ -63,9 +67,9 @@ module.exports = function (filename, opts) {
           nextWriteBlockOffset = recordOffset + 2 + recordLength
           latestBlockIndex = len / blockSize - 1
 
-          debug("opened file, since: %d", since.value)
+          debug('opened file, since: %d', since.value)
 
-          while(waiting.length) waiting.shift()()
+          while (waiting.length) waiting.shift()()
         })
       })
     }
@@ -84,7 +88,7 @@ module.exports = function (filename, opts) {
   }
 
   const writeLock = mutexify()
-  
+
   function writeWithFSync(offset, block, successValue, cb) {
     writeLock((unlock) => {
       raf.write(offset, block, (err) => {
@@ -101,7 +105,7 @@ module.exports = function (filename, opts) {
   }
 
   function fixBlock(buffer, i, offset, lastOk, cb) {
-    debug("found record that does not validate, fixing last block", i)
+    debug('found record that does not validate, fixing last block', i)
 
     const goodData = buffer.slice(0, i)
     const newBlock = Buffer.alloc(blockSize)
@@ -112,10 +116,9 @@ module.exports = function (filename, opts) {
 
   function getLastGoodRecord(buffer, offset, cb) {
     let lastOk = 0
-    for (let i = 0; i < buffer.length;) {
+    for (let i = 0; i < buffer.length; ) {
       const length = buffer.readUInt16LE(i)
-      if (length === 0)
-        break
+      if (length === 0) break
       else {
         if (i + 2 + length > blockSize) {
           // corrupt length data
@@ -142,10 +145,10 @@ module.exports = function (filename, opts) {
 
     var cachedBlock = cache.get(blockIndex)
     if (cachedBlock) {
-      debug("getting offset %d from cache", offset)
+      debug('getting offset %d from cache', offset)
       cb(null, cachedBlock)
     } else {
-      debug("getting offset %d from disc", offset)
+      debug('getting offset %d from disc', offset)
       raf.read(blockStart, blockSize, (err, buffer) => {
         cache.set(blockIndex, buffer)
         cb(err, buffer)
@@ -157,20 +160,17 @@ module.exports = function (filename, opts) {
     const length = buffer.readUInt16LE(recordOffset)
     const data = buffer.slice(recordOffset + 2, recordOffset + 2 + length)
 
-    if (data.every(x => x === 0)) {
+    if (data.every((x) => x === 0)) {
       const err = new Error('item has been deleted')
       err.code = 'flumelog:deleted'
       return cb(err)
-    }
-    else
-      cb(null, codec.decode(data))
+    } else cb(null, codec.decode(data))
   }
 
   function get(offset, cb) {
     if (typeof offset !== 'number' || isNaN(offset))
       return cb(`Offset ${offset} is not a number`)
-    else if (offset < 0)
-      return cb(`Offset is ${offset} must be >= 0`)
+    else if (offset < 0) return cb(`Offset is ${offset} must be >= 0`)
 
     getBlock(offset, (err, buffer) => {
       if (err) return cb(err)
@@ -193,13 +193,10 @@ module.exports = function (filename, opts) {
     let nextOffset = recordOffset + 2 + length + blockIndex * blockSize
     if (nextLength === 0 && getNextBlockIndex(offset) > since.value)
       nextOffset = -1
-    else if (nextLength === 0)
-      nextOffset = 0
+    else if (nextLength === 0) nextOffset = 0
 
-    if (data.every(x => x === 0))
-      return [nextOffset, null]
-    else
-      return [nextOffset, codec.decode(data)]
+    if (data.every((x) => x === 0)) return [nextOffset, null]
+    else return [nextOffset, codec.decode(data)]
   }
 
   function del(offset, cb) {
@@ -209,7 +206,7 @@ module.exports = function (filename, opts) {
       const recordOffset = getRecordOffset(offset)
       const recordLength = buffer.readUInt16LE(recordOffset)
       const nullBytes = Buffer.alloc(recordLength)
-      nullBytes.copy(buffer, recordOffset+2)
+      nullBytes.copy(buffer, recordOffset + 2)
 
       // we write directly here to make normal write simpler
       writeWithFSync(offset - recordOffset, buffer, null, cb)
@@ -218,7 +215,7 @@ module.exports = function (filename, opts) {
 
   function appendRecord(buffer, data, offset) {
     buffer.writeUInt16LE(data.length, offset)
-    data.copy(buffer, offset+2)
+    data.copy(buffer, offset + 2)
   }
 
   function recordSize(buffer) {
@@ -227,16 +224,14 @@ module.exports = function (filename, opts) {
 
   function appendSingle(data) {
     let encodedData = codec.encode(data)
-    if (typeof encodedData === 'string')
-      encodedData = Buffer.from(encodedData)
+    if (typeof encodedData === 'string') encodedData = Buffer.from(encodedData)
 
     // we always leave 2 bytes at the end as the last record must be
     // followed by a 0 (length) to signal end of record
     if (recordSize(encodedData) + 2 > blockSize)
-      throw new Error("data larger than block size")
+      throw new Error('data larger than block size')
 
-    if (nextWriteBlockOffset + recordSize(encodedData) + 2 > blockSize)
-    {
+    if (nextWriteBlockOffset + recordSize(encodedData) + 2 > blockSize) {
       // doesn't fit
       const buffer = Buffer.alloc(blockSize)
       latestBlock = buffer
@@ -251,28 +246,28 @@ module.exports = function (filename, opts) {
     nextWriteBlockOffset += recordSize(encodedData)
     blocksToBeWritten.set(latestBlockIndex, { block: latestBlock, fileOffset })
     scheduleWrite()
-    debug("data inserted at offset %d", fileOffset)
+    debug('data inserted at offset %d', fileOffset)
     return fileOffset
   }
 
-  function append(data, cb)
-  {
+  function append(data, cb) {
     if (Array.isArray(data)) {
       let fileOffset = 0
       for (let i = 0, length = data.length; i < length; ++i)
         fileOffset = appendSingle(data[i])
 
       cb(null, fileOffset)
-    } else
-      cb(null, appendSingle(data))
+    } else cb(null, appendSingle(data))
   }
 
   function appendTransaction(dataArray, cb) {
     if (!Array.isArray(dataArray))
-      return cb(new Error("appendTransaction expects first argument to be an array"))
+      return cb(
+        new Error('appendTransaction expects first argument to be an array')
+      )
 
     let size = 0
-    const encodedDataArray = dataArray.map(data => {
+    const encodedDataArray = dataArray.map((data) => {
       let encodedData = codec.encode(data)
       if (typeof encodedData === 'string')
         encodedData = Buffer.from(encodedData)
@@ -284,11 +279,9 @@ module.exports = function (filename, opts) {
     // followed by a 0 (length) to signal end of record
     size += 2
 
-    if (size > blockSize)
-      return cb(new Error("data larger than block size"))
+    if (size > blockSize) return cb(new Error('data larger than block size'))
 
-    if (nextWriteBlockOffset + size > blockSize)
-    {
+    if (nextWriteBlockOffset + size > blockSize) {
       // doesn't fit
       const buffer = Buffer.alloc(blockSize)
       latestBlock = buffer
@@ -298,14 +291,17 @@ module.exports = function (filename, opts) {
     }
 
     const fileOffsets = []
-    encodedDataArray.forEach(encodedData => {
+    encodedDataArray.forEach((encodedData) => {
       appendRecord(latestBlock, encodedData, nextWriteBlockOffset)
       cache.set(latestBlockIndex, latestBlock) // update cache
       const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
       fileOffsets.push(fileOffset)
       nextWriteBlockOffset += recordSize(encodedData)
-      blocksToBeWritten.set(latestBlockIndex, { block: latestBlock, fileOffset })
-      debug("data inserted at offset %d", fileOffset)
+      blocksToBeWritten.set(latestBlockIndex, {
+        block: latestBlock,
+        fileOffset,
+      })
+      debug('data inserted at offset %d', fileOffset)
     })
 
     scheduleWrite()
@@ -321,34 +317,42 @@ module.exports = function (filename, opts) {
     const { block, fileOffset } = blocksToBeWritten.get(blockIndex)
     blocksToBeWritten.delete(blockIndex)
 
-    debug("writing block of size: %d, to offset: %d",
-          block.length, blockIndex * blockSize)
+    debug(
+      'writing block of size: %d, to offset: %d',
+      block.length,
+      blockIndex * blockSize
+    )
     writeWithFSync(blockIndex * blockSize, block, null, (err) => {
       const drainsBefore = (waitingDrain.get(blockIndex) || []).slice(0)
       writingBlockIndex = -1
       if (err) {
-        debug("failed to write block %d", blockIndex)
+        debug('failed to write block %d', blockIndex)
         throw err
       } else {
         since.set(fileOffset)
 
         // write values to live streams
-        self.streams.forEach(stream => {
+        self.streams.forEach((stream) => {
           if (stream.live) stream.liveResume()
         })
 
-        debug("draining the waiting queue for %d, items: %d", blockIndex, drainsBefore.length)
-        for (let i = 0; i < drainsBefore.length; ++i)
-          drainsBefore[i]()
+        debug(
+          'draining the waiting queue for %d, items: %d',
+          blockIndex,
+          drainsBefore.length
+        )
+        for (let i = 0; i < drainsBefore.length; ++i) drainsBefore[i]()
 
         // the resumed streams might have added more to waiting
         let drainsAfter = waitingDrain.get(blockIndex) || []
         if (drainsBefore.length === drainsAfter.length)
           waitingDrain.delete(blockIndex)
-        else if (drainsAfter.length === 0)
-          waitingDrain.delete(blockIndex)
+        else if (drainsAfter.length === 0) waitingDrain.delete(blockIndex)
         else
-          waitingDrain.set(blockIndex, waitingDrain.get(blockIndex).slice(drainsBefore.length))
+          waitingDrain.set(
+            blockIndex,
+            waitingDrain.get(blockIndex).slice(drainsBefore.length)
+          )
 
         write() // next!
       }
@@ -369,10 +373,12 @@ module.exports = function (filename, opts) {
     })
   }
 
-  function onLoad (fn) {
+  function onLoad(fn) {
     return function (arg, cb) {
       if (latestBlock === null)
-        waiting.push(function () { fn(arg, cb) })
+        waiting.push(function () {
+          fn(arg, cb)
+        })
       else fn(arg, cb)
     }
   }
@@ -388,7 +394,7 @@ module.exports = function (filename, opts) {
     return res
   }
 
-  return self = {
+  return (self = {
     get: onLoad(get),
     del: onLoad(del),
     append: onLoad(append),
@@ -400,7 +406,10 @@ module.exports = function (filename, opts) {
     onDrain: onLoad(function (fn) {
       if (blocksToBeWritten.size === 0 && writingBlockIndex === -1) fn()
       else {
-        const latestBlockIndex = blocksToBeWritten.size > 0 ? last(blocksToBeWritten.keys()) : writingBlockIndex
+        const latestBlockIndex =
+          blocksToBeWritten.size > 0
+            ? last(blocksToBeWritten.keys())
+            : writingBlockIndex
         const drains = waitingDrain.get(latestBlockIndex) || []
         drains.push(fn)
         waitingDrain.set(latestBlockIndex, drains)
@@ -419,5 +428,5 @@ module.exports = function (filename, opts) {
       return stream
     },
     streams: [],
-  }
+  })
 }

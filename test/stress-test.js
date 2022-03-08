@@ -15,11 +15,11 @@ function randomIntFromInterval(min, max) {
 
 function randomStr(length) {
   let result = ''
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  const charactersLength = characters.length;
+  const characters =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  const charactersLength = characters.length
   for (let i = 0; i < length; ++i)
-    result += characters.charAt(Math.floor(Math.random() *
-                                           charactersLength))
+    result += characters.charAt(Math.floor(Math.random() * charactersLength))
   return result
 }
 
@@ -28,15 +28,17 @@ for (var run = 0; run < 10; ++run) {
     const filename = '/tmp/async-flumelog-basic-stress.log'
     const blockSize = randomIntFromInterval(12 * 1024, 64 * 1024)
 
-    try { fs.unlinkSync(filename) } catch (_) {}
+    try {
+      fs.unlinkSync(filename)
+    } catch (_) {}
     var db = Log(filename, {
       blockSize,
-      codec: require('flumecodec/json')
+      codec: require('flumecodec/json'),
     })
 
     const originalStream = db.stream
     db.stream = function (opts) {
-      const tooHot = TooHot({ceiling: 50, wait: 100, maxPause: Infinity})
+      const tooHot = TooHot({ ceiling: 50, wait: 100, maxPause: Infinity })
       const s = originalStream(opts)
       const originalPipe = s.pipe.bind(s)
       s.pipe = function pipe(o) {
@@ -61,68 +63,72 @@ for (var run = 0; run < 10; ++run) {
 
     var data = []
     for (var i = 0; i < items; i++) {
-      o = {key: '#'+i, value: {
-        s: randomStr(randomIntFromInterval(100, 8000)),
-        foo: Math.random(), bar: Date.now()
-      }}
-      if (i % 10 === 0)
-        o.value.baz = randomIntFromInterval(1, 1500)
-      if (i % 3 === 0)
-        o.value.cat = randomIntFromInterval(1, 1500)
-      if (i % 2 === 0)
-        o.value.hat = randomIntFromInterval(1, 1500)
+      o = {
+        key: '#' + i,
+        value: {
+          s: randomStr(randomIntFromInterval(100, 8000)),
+          foo: Math.random(),
+          bar: Date.now(),
+        },
+      }
+      if (i % 10 === 0) o.value.baz = randomIntFromInterval(1, 1500)
+      if (i % 3 === 0) o.value.cat = randomIntFromInterval(1, 1500)
+      if (i % 2 === 0) o.value.hat = randomIntFromInterval(1, 1500)
       data.push(o)
     }
 
     db.append(data, function (err, offset) {
       var remove = db.since(function (v) {
-        if(v < offset) return
+        if (v < offset) return
         remove()
 
         var result1 = []
-        var stream1Done = false, stream2Done = false
+        var stream1Done = false,
+          stream2Done = false
 
-        db.stream({offsets: false}).pipe({
+        db.stream({ offsets: false }).pipe({
           paused: false,
-          write: function (value) { result1.push(value) },
-          end: function() {
+          write: function (value) {
+            result1.push(value)
+          },
+          end: function () {
             t.equal(result1.length, data.length)
             //t.deepEqual(data, result)
-            if (stream2Done)
-              db.close(t.end)
-            else
-              stream1Done = true
-          }
+            if (stream2Done) db.close(t.end)
+            else stream1Done = true
+          },
         })
 
         var result2 = []
 
-        db.stream({offsets: false}).pipe({
+        db.stream({ offsets: false }).pipe({
           paused: false,
-          write: function (value) { result2.push(value) },
-          end: function() {
+          write: function (value) {
+            result2.push(value)
+          },
+          end: function () {
             t.equal(result2.length, data.length)
             //t.deepEqual(data, result)
-            if (stream1Done)
-              db.close(t.end)
-            else
-              stream2Done = true
-          }
+            if (stream1Done) db.close(t.end)
+            else stream2Done = true
+          },
         })
       })
     })
   })
 }
 
-function collect (cb) {
+function collect(cb) {
   return {
     array: [],
     paused: false,
-    write: function (value) { this.array.push(value) },
+    write: function (value) {
+      this.array.push(value)
+    },
     end: function (err) {
       this.ended = err || true
       cb(err, this.array)
-    }
+    },
   }
 }
 
@@ -130,16 +136,18 @@ for (var run = 0; run < 10; ++run) {
   tape('live stress', function (t) {
     const filename = '/tmp/async-flumelog-live-stress.log'
 
-    try { fs.unlinkSync(filename) } catch (_) {}
+    try {
+      fs.unlinkSync(filename)
+    } catch (_) {}
     var db = Log(filename, {
-      blockSize: 64*1024,
+      blockSize: 64 * 1024,
       writeTimeout: 10,
-      codec: require('flumecodec/json')
+      codec: require('flumecodec/json'),
     })
 
     const originalStream = db.stream
     db.stream = function (opts) {
-      const tooHot = TooHot({ceiling: 90, wait: 100, maxPause: Infinity})
+      const tooHot = TooHot({ ceiling: 90, wait: 100, maxPause: Infinity })
       const s = originalStream(opts)
       const originalPipe = s.pipe.bind(s)
       s.pipe = function pipe(o) {
@@ -166,20 +174,21 @@ for (var run = 0; run < 10; ++run) {
     var sink = collect(function () {
       throw new Error('live stream should not end')
     })
-    db.stream({live: true, offsets: false}).pipe(sink)
+    db.stream({ live: true, offsets: false }).pipe(sink)
 
-    var data = [], latestOffset = 0
+    var data = [],
+      latestOffset = 0
     for (var i = 0; i < items; i++) {
       const d = {
-        key: '#'+i,
+        key: '#' + i,
         value: {
-          foo: Math.random(), bar: Date.now()
-        }
+          foo: Math.random(),
+          bar: Date.now(),
+        },
       }
       data.push(d)
       db.append(d, function (err, offset) {
-        if (offset > latestOffset)
-          latestOffset = offset
+        if (offset > latestOffset) latestOffset = offset
       })
     }
 
@@ -187,12 +196,11 @@ for (var run = 0; run < 10; ++run) {
       if (sink.array.length === data.length) {
         t.deepEqual(sink.array, data)
         t.end()
-      } else
-        setTimeout(checkStreamDone, 200)
+      } else setTimeout(checkStreamDone, 200)
     }
 
     var remove = db.since(function (offset) {
-      if(offset < latestOffset) return
+      if (offset < latestOffset) return
       if (remove) remove()
       // this is crazy, db.since is set first, then streams are
       // resumed. So we need to wait for the stream to resume and
@@ -206,16 +214,18 @@ for (var run = 0; run < 10; ++run) {
   tape('resume stress', function (t) {
     const filename = '/tmp/async-flumelog-live-stress.log'
 
-    try { fs.unlinkSync(filename) } catch (_) {}
+    try {
+      fs.unlinkSync(filename)
+    } catch (_) {}
     var db = Log(filename, {
-      blockSize: 64*1024,
+      blockSize: 64 * 1024,
       writeTimeout: 10,
-      codec: require('flumecodec/json')
+      codec: require('flumecodec/json'),
     })
 
     const originalStream = db.stream
     db.stream = function (opts) {
-      const tooHot = TooHot({ceiling: 90, wait: 100, maxPause: Infinity})
+      const tooHot = TooHot({ ceiling: 90, wait: 100, maxPause: Infinity })
       const s = originalStream(opts)
       const originalPipe = s.pipe.bind(s)
       s.pipe = function pipe(o) {
@@ -242,21 +252,22 @@ for (var run = 0; run < 10; ++run) {
     var sink = collect(function () {
       throw new Error('live stream should not end')
     })
-    const stream = db.stream({live: true, offsets: false})
+    const stream = db.stream({ live: true, offsets: false })
     stream.pipe(sink)
 
-    var data = [], latestOffset = 0
+    var data = [],
+      latestOffset = 0
     for (var i = 0; i < items; i++) {
       const d = {
-        key: '#'+i,
+        key: '#' + i,
         value: {
-          foo: Math.random(), bar: Date.now()
-        }
+          foo: Math.random(),
+          bar: Date.now(),
+        },
       }
       data.push(d)
       db.append(d, function (err, offset) {
-        if (offset > latestOffset)
-          latestOffset = offset
+        if (offset > latestOffset) latestOffset = offset
       })
     }
 
@@ -266,12 +277,11 @@ for (var run = 0; run < 10; ++run) {
       if (sink.array.length === data.length) {
         t.deepEqual(sink.array, data)
         t.end()
-      } else
-        setTimeout(checkStreamDone, randomIntFromInterval(50,200))
+      } else setTimeout(checkStreamDone, randomIntFromInterval(50, 200))
     }
 
     var remove = db.since(function (offset) {
-      if(offset < latestOffset) return
+      if (offset < latestOffset) return
       if (remove) remove()
       // this is crazy, db.since is set first, then streams are
       // resumed. So we need to wait for the stream to resume and

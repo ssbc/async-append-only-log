@@ -11,7 +11,7 @@ const filename = '/tmp/dsf-idempotent-resume.log'
 try {
   fs.unlinkSync(filename)
 } catch (_) {}
-var log = Log(filename, {blockSize: 64 * 1024})
+var log = Log(filename, { blockSize: 64 * 1024 })
 
 function Buf(fill, length) {
   var b = Buffer.alloc(length)
@@ -34,7 +34,7 @@ tape('populate', function (t) {
 })
 
 tape('a second resume() on the same stream is idempotent', function (t) {
-  const stream = log.stream({offsets: false})
+  const stream = log.stream({ offsets: false })
 
   // The pipe causes the 1st resume to happen
   let i = 0

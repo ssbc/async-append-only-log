@@ -14,4 +14,3 @@ module.exports = function toCompat(log) {
   }
   return log
 }
-

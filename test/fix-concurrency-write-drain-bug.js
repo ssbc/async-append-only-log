@@ -12,12 +12,14 @@ const msg1 = { text: 'hello world hello world' }
 
 tape('check since after drain', async (t) => {
   for (var i = 0; i < 1000; ++i) {
-    try { fs.unlinkSync(file + i); } catch (_) {}
+    try {
+      fs.unlinkSync(file + i)
+    } catch (_) {}
     const db = Offset(file + i, {
       block: 16 * 1024,
       writeTimeout: 1,
       codec: require('flumecodec/json'),
-    });
+    })
 
     await new Promise((resolve, reject) => {
       db.onReady(() => {
@@ -27,14 +29,14 @@ tape('check since after drain', async (t) => {
           setTimeout(() => {
             db.onDrain(() => {
               if (db.since.value !== 0) {
-                t.fail('after drain offset was not set');
+                t.fail('after drain offset was not set')
               }
-              resolve();
-            });
-          }, 1);
-        });
-      });
-    });
+              resolve()
+            })
+          }, 1)
+        })
+      })
+    })
   }
-  t.end();
-});
+  t.end()
+})
