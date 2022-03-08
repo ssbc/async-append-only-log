@@ -220,4 +220,3 @@ applied.
 [ltgt]: https://github.com/dominictarr/ltgt
 [jitdb-results]: https://github.com/arj03/jitdb/blob/master/bench.txt
 [ssb-db2]: https://github.com/ssb-ngi-pointer/ssb-db2/
-```
