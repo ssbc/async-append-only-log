@@ -4,7 +4,6 @@
 
 const tape = require('tape')
 const fs = require('fs')
-const push = require('push-stream')
 const Log = require('../')
 const TooHot = require('too-hot')
 
@@ -158,9 +157,16 @@ for (var run = 0; run < 10; ++run) {
       return s
     }
 
-    var sink = push.collect(() => {
-      throw new Error('live stream should not end')
-    })
+    var sink = {
+      paused: false,
+      array: [],
+      write(rec) {
+        this.array.push(rec)
+      },
+      end() {
+        throw new Error('live stream should not end')
+      },
+    }
     db.stream({ live: true, offsets: false }).pipe(sink)
 
     var data = [],
@@ -236,9 +242,16 @@ for (var run = 0; run < 10; ++run) {
       return s
     }
 
-    var sink = push.collect(() => {
-      throw new Error('live stream should not end')
-    })
+    var sink = {
+      paused: false,
+      array: [],
+      write(rec) {
+        this.array.push(rec)
+      },
+      end() {
+        throw new Error('live stream should not end')
+      },
+    }
     const stream = db.stream({ live: true, offsets: false })
     stream.pipe(sink)
 
