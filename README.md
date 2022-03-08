@@ -168,6 +168,16 @@ log.onDrain(() => {
 })
 ```
 
+### Keep track of the most recent record
+
+As an [obz] observable:
+
+```js
+log.since((offset) => {
+  // ...
+})
+```
+
 ### Close the log
 
 ```js
@@ -220,3 +230,4 @@ applied.
 [ltgt]: https://github.com/dominictarr/ltgt
 [jitdb-results]: https://github.com/arj03/jitdb/blob/master/bench.txt
 [ssb-db2]: https://github.com/ssb-ngi-pointer/ssb-db2/
+[obz]: https://www.npmjs.com/package/obz
