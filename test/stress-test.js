@@ -118,20 +118,6 @@ for (var run = 0; run < 10; ++run) {
   })
 }
 
-function collect(cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (value) {
-      this.array.push(value)
-    },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    },
-  }
-}
-
 for (var run = 0; run < 10; ++run) {
   tape('live stress', function (t) {
     const filename = '/tmp/async-flumelog-live-stress.log'
@@ -171,9 +157,16 @@ for (var run = 0; run < 10; ++run) {
       return s
     }
 
-    var sink = collect(function () {
-      throw new Error('live stream should not end')
-    })
+    var sink = {
+      paused: false,
+      array: [],
+      write(rec) {
+        this.array.push(rec)
+      },
+      end() {
+        throw new Error('live stream should not end')
+      },
+    }
     db.stream({ live: true, offsets: false }).pipe(sink)
 
     var data = [],
@@ -249,9 +242,16 @@ for (var run = 0; run < 10; ++run) {
       return s
     }
 
-    var sink = collect(function () {
-      throw new Error('live stream should not end')
-    })
+    var sink = {
+      paused: false,
+      array: [],
+      write(rec) {
+        this.array.push(rec)
+      },
+      end() {
+        throw new Error('live stream should not end')
+      },
+    }
     const stream = db.stream({ live: true, offsets: false })
     stream.pipe(sink)
 

@@ -4,6 +4,7 @@
 
 var tape = require('tape')
 var fs = require('fs')
+var push = require('push-stream')
 var Log = require('../')
 
 const filename = '/tmp/dsf-test-stream-pause.log'
@@ -19,20 +20,6 @@ function Buf(fill, length) {
   return b
 }
 
-function collect(cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (value) {
-      this.array.push(value)
-    },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    },
-  }
-}
-
 var msg1 = Buf(0x10, 100)
 tape('populate', function (t) {
   let i = 0
@@ -43,7 +30,7 @@ tape('populate', function (t) {
       else {
         log.onDrain(() => {
           log.stream({ offsets: false }).pipe(
-            collect(function (err, ary) {
+            push.collect((err, ary) => {
               t.equal(ary.length, 1000)
               t.end()
             })

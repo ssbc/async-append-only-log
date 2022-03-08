@@ -4,6 +4,7 @@
 
 var tape = require('tape')
 var fs = require('fs')
+var push = require('push-stream')
 var Log = require('../')
 
 const filename = '/tmp/dsf-test-stream.log'
@@ -17,20 +18,6 @@ function Buf(fill, length) {
   var b = Buffer.alloc(length)
   b.fill(fill)
   return b
-}
-
-function collect(cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (value) {
-      this.array.push(value)
-    },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    },
-  }
 }
 
 tape('empty', function (t) {
@@ -49,7 +36,7 @@ tape('single', function (t) {
     t.notOk(err)
     log.onDrain(() => {
       log.stream({ offsets: false }).pipe(
-        collect(function (err, ary) {
+        push.collect((err, ary) => {
           t.notOk(err)
           t.deepEqual(ary, [msg1])
           t.end()
@@ -87,7 +74,7 @@ tape('single live pausable', function (t) {
 tape('single, reload', function (t) {
   log = Log(filename, { blockSize: 64 * 1024 })
   log.stream({ offsets: false }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg1])
       t.end()
@@ -101,7 +88,7 @@ tape('second', function (t) {
     t.notOk(err)
     log.onDrain(() => {
       log.stream({ offsets: false }).pipe(
-        collect(function (err, ary) {
+        push.collect((err, ary) => {
           t.notOk(err)
           t.deepEqual(ary, [msg1, msg2])
           t.end()
@@ -113,24 +100,25 @@ tape('second', function (t) {
 
 var msg3 = Buf(0x30, 30)
 tape('live', function (t) {
-  var sink = collect(function (err) {
-    if (err === 'tape-ended') return
-    else throw new Error('live stream should not end')
+  const expected = [msg1, msg2, msg3]
+  const logStream = log.stream({ live: true, offsets: false })
+  logStream.pipe({
+    paused: false,
+    write(buf) {
+      t.deepEqual(buf, expected.shift())
+      if (expected.length === 0) {
+        logStream.abort()
+        t.end()
+      }
+    },
+    end() {},
   })
-  let logStream = log.stream({ live: true, offsets: false })
-  logStream.pipe(sink)
   log.append(msg3, function (err) {})
-  log.onDrain(function () {
-    t.deepEqual(sink.array, [msg1, msg2, msg3])
-    sink.end('tape-ended')
-    logStream.abort()
-    t.end()
-  })
 })
 
 tape('offsets', function (t) {
   log.stream({ offsets: true }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [
         { offset: 0, value: msg1 },
@@ -176,7 +164,7 @@ tape('pausable', function (t) {
 
 tape('limit', function (t) {
   log.stream({ offsets: false, limit: 1 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg1])
       t.end()
@@ -186,7 +174,7 @@ tape('limit', function (t) {
 
 tape('limit gte', function (t) {
   log.stream({ offsets: false, gte: 12, limit: 1 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg2])
       t.end()
@@ -196,7 +184,7 @@ tape('limit gte', function (t) {
 
 tape('gte', function (t) {
   log.stream({ offsets: false, gte: 12 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg2, msg3])
       t.end()
@@ -206,7 +194,7 @@ tape('gte', function (t) {
 
 tape('gt', function (t) {
   log.stream({ offsets: false, gt: 12 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg3])
       t.end()
@@ -216,7 +204,7 @@ tape('gt', function (t) {
 
 tape('gt 0', function (t) {
   log.stream({ offsets: false, gt: 0 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg2, msg3])
       t.end()
@@ -226,7 +214,7 @@ tape('gt 0', function (t) {
 
 tape('gt -1', function (t) {
   log.stream({ offsets: false, gt: -1 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg1, msg2, msg3])
       t.end()
@@ -235,27 +223,22 @@ tape('gt -1', function (t) {
 })
 
 tape('live gt', function (t) {
-  var msg4 = Buf(0x40, 40)
-  var sink = collect(function (err) {
-    if (err === 'tape-ended') return
-    else throw new Error('live stream should not end')
-  })
-  let logStream = log.stream({
+  const msg4 = Buf(0x40, 40)
+  const logStream = log.stream({
     live: true,
     offsets: false,
     gt: 10 + 2 + 20 + 2,
   })
-  logStream.pipe(sink)
-  log.append(msg4, function (err) {})
-  log.onDrain(() => {
-    // need to wait for stream to get changes from save
-    setTimeout(() => {
-      t.deepEqual(sink.array, [msg4])
-      sink.end('tape-ended')
+  logStream.pipe({
+    paused: false,
+    write(buf) {
+      t.deepEqual(buf, msg4)
       logStream.abort()
       t.end()
-    }, 200)
+    },
+    end() {},
   })
+  log.append(msg4, function (err) {})
 })
 
 tape('live gt -1', function (t) {
@@ -268,11 +251,19 @@ tape('live gt -1', function (t) {
   } catch (_) {}
   var newLog = Log(filename1, { blockSize: 64 * 1024 })
 
-  var sink = collect(function (err) {
-    if (err === 'tape-ended') return
-    else throw new Error('live stream should not end')
-  })
-  let logStream = newLog.stream({ live: true, offsets: false, gt: -1 })
+  const logStream = newLog.stream({ live: true, offsets: false, gt: -1 })
+  const expected = [msg5, msg6]
+  const sink = {
+    paused: false,
+    write(buf) {
+      t.deepEquals(buf, expected.shift())
+      if (expected.length === 0) {
+        logStream.abort()
+        t.end()
+      }
+    },
+    end() {},
+  }
   logStream.pipe(sink)
 
   setTimeout(() => {
@@ -282,15 +273,6 @@ tape('live gt -1', function (t) {
     logStream.resume()
     newLog.append(msg5, function (err) {})
     newLog.append(msg6, function (err) {})
-    newLog.onDrain(() => {
-      // need to wait for stream to get changes from save
-      setTimeout(() => {
-        t.deepEqual(sink.array, [msg5, msg6])
-        sink.end('tape-ended')
-        logStream.abort()
-        t.end()
-      }, 200)
-    })
   }, 100)
 })
 

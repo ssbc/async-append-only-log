@@ -4,6 +4,7 @@
 
 var tape = require('tape')
 var fs = require('fs')
+var push = require('push-stream')
 var Log = require('../')
 
 var msg1 = Buffer.from(
@@ -113,20 +114,6 @@ tape('simple reread 2', function (t) {
   })
 })
 
-function collect(cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (v) {
-      this.array.push(v)
-    },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    },
-  }
-}
-
 tape('stream delete', function (t) {
   var file = '/tmp/offset-test_' + Date.now() + '.log'
   var db = Log(file, { blockSize: 64 * 1024 })
@@ -141,7 +128,7 @@ tape('stream delete', function (t) {
         t.error(err)
         db.onDrain(() => {
           db.stream({ offsets: false }).pipe(
-            collect(function (err, ary) {
+            push.collect((err, ary) => {
               t.notOk(err)
               t.deepEqual(ary, [null, buf2])
               t.end()
