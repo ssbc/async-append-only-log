@@ -12,22 +12,18 @@ const mutexify = require('mutexify')
 
 const Stream = require('./stream')
 
-// defaults
-function alwaysTrue() {
-  return true
-}
-function id(e) {
-  return e
-}
-const _codec = { encode: id, decode: id, buffer: true }
+const DEFAULT_BLOCK_SIZE = 65536
+const DEFAULT_CODEC = { encode: (x) => x, decode: (x) => x }
+const DEFAULT_WRITE_TIMEOUT = 250
+const DEFAULT_VALIDATE = () => true
 
 module.exports = function (filename, opts) {
   const cache = new Cache(1024) // this is potentially 65mb!
   const raf = RAF(filename)
-  const blockSize = (opts && opts.blockSize) || 65536
-  const codec = (opts && opts.codec) || _codec
-  const writeTimeout = (opts && opts.writeTimeout) || 250
-  const validateRecord = (opts && opts.validateRecord) || alwaysTrue
+  const blockSize = (opts && opts.blockSize) || DEFAULT_BLOCK_SIZE
+  const codec = (opts && opts.codec) || DEFAULT_CODEC
+  const writeTimeout = (opts && opts.writeTimeout) || DEFAULT_WRITE_TIMEOUT
+  const validateRecord = (opts && opts.validateRecord) || DEFAULT_VALIDATE
   let self
 
   // offset of last written record
@@ -143,7 +139,7 @@ module.exports = function (filename, opts) {
     const blockStart = offset - getRecordOffset(offset)
     const blockIndex = blockStart / blockSize
 
-    var cachedBlock = cache.get(blockIndex)
+    const cachedBlock = cache.get(blockIndex)
     if (cachedBlock) {
       debug('getting offset %d from cache', offset)
       cb(null, cachedBlock)

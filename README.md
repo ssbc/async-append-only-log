@@ -16,7 +16,7 @@ A log consists of a number of `blocks`, that contain a number of
 `record`s. A `record` is simply it's `length`, as a 16-bit unsigned
 integer, followed by the `data` bytes. A record must be in one and
 only one block, which means there probably will be some empty space at
-the end of a block.  Blocks are always written in full.
+the end of a block. Blocks are always written in full.
 
 ```
 <block>
@@ -46,17 +46,133 @@ This module is not compatible with flume without a wrapper around
 stream as it uses the same terminology as [JITDB] and [ssb-db2] of
 using offset for the byte position of a record instead of seq.
 
-## Options
+## API
 
+### Open the log
+
+```js
+const OffsetLog = require('async-append-only-log')
+
+const log = OffsetLog('/path/to/log.file', {
+  /**
+   * Size of the block, in bytes.
+   *
+   * DEFAULT: 65536
+   */
+  blockSize: 1024,
+
+  /**
+   * Conversion layer as an object of the shape `{encode, decode}`,
+   * where `encode` defines a function (item)=>buffer when writing to disk
+   * and `decode` defines a function (buffer)=>item, where `item` is what
+   * you will directly interact with using async-append-only-log's APIs.
+   * For JSON, use `flumecodec/json`.
+   *
+   * DEFAULT: `{encode: x => x, decode: x => x}`
+   */
+  codec: { encode, decode },
+
+  /**
+   * Amount of time to wait between writes, in milliseconds.
+   *
+   * DEFAULT: 250
+   */
+  writeTimeout: 100,
+
+  /**
+   * A function that takes a record's buffer and should return a boolean
+   * indicating whether the record is "valid". Implement this to ensure the
+   * record is not corrupted. When the log is loaded, all records in the latest
+   * block will be checked using this.
+   *
+   * DEFAULT: (recordBuffer) => true
+   */
+  validateRecord: (recordBuffer) => {
+    // ...
+  },
+})
 ```
-var OffsetLog = require('async-append-only-log')
-var log = OffsetLog('/data/log', {
-  blockSize: 1024,          // default is 1024*64
-  codec: {encode, decode}   // defaults to no codec, expects buffers. for json use flumecodec/json
-  writeTimeout: 100         // default is 250. Amount of time to wait between writes
-  validateRecord: (d) => {} // default is no validate. A custom function that takes a message and
-                            // runs a custom validation to ensure the record is valid.
-                            // On load, all records in the latest block will be checked using this
+
+### Write a single record
+
+```js
+log.append(item, (err, offset) => {
+  // ...
+})
+```
+
+### Write several records
+
+```js
+log.append([item1, item2, item3], (err, offset3) => {
+  // ...
+})
+```
+
+### Write several records, either all fail or all succeed
+
+```js
+log.appendTransaction([item1, item2, item3], (err, offset3) => {
+  // ...
+})
+```
+
+### Scan all records as a `push-stream`
+
+```js
+log.stream(opts).pipe(sink)
+```
+
+Where
+
+```js
+opts = { live, offsets, values, limit, gte, gt }
+```
+
+- `live` is a boolean indicating that you're interested only in records added
+after streaming began. DEFAULT: `false`
+- `offsets` is a boolean indicating you're interested in knowing the offset for each record streamed to the sink. DEFAULT: `true`
+- `values` is a boolean indicating you're interested in getting the data buffer for each record streamed to the sink. DEFAULT: `true`
+- `limit` is a number indicating how many records you want from the stream, after which the stream will close. DEFAULT: `0` which **means unlimited**
+- `gte` and `gt` and other opts are specific to [ltgt]
+
+```js
+sink = { paused, write, end }
+```
+
+`sink` is from [push-stream]
+
+### Read a record
+
+```js
+log.get(offset, (err, item) => {
+  // ...
+})
+```
+
+### Delete a record
+
+In practice, this will just overwrite the record with zero bytes.
+
+```js
+log.del(offset, (err) => {
+  // ...
+})
+```
+
+### Wait for all ongoing writes to complete
+
+```js
+log.onDrain(() => {
+  // ...
+})
+```
+
+### Close the log
+
+```js
+log.close((err) => {
+  // ...
 })
 ```
 
@@ -70,6 +186,7 @@ benchmarks, as it writes every message synchronously rendering the
 results invalid.
 
 ```
+
 async-append-only-log:
 
 name, ops/second, mb/second, ops, total-mb, seconds
@@ -87,6 +204,7 @@ stream, 294511.348, 43.997, 2945408, 440.017, 10.001
 stream no cache, 327724.949, 48.959, 3064556, 457.817, 9.351
 stream10, 452973.302, 67.67, 4530186, 676.776, 10.001
 random, 28774.712, 4.298, 287891, 43.008, 10.005
+
 ```
 
 To run the benchmarks the small `bench-flumelog.patch` needs to be
@@ -94,9 +212,12 @@ applied.
 
 [JITDB] results for more real world benchmarks are available as [jitdb-results].
 
+[push-stream]: https://github.com/push-stream/push-stream
 [flumelog-aligned-offset]: https://github.com/flumedb/flumelog-aligned-offset/
 [flumelog-offset]: https://github.com/flumedb/flumelog-offset/
 [bench-flumelog]: https://github.com/flumedb/bench-flumelog
-[JITDB]: https://github.com/ssb-ngi-pointer/jitdb/
+[jitdb]: https://github.com/ssb-ngi-pointer/jitdb/
+[ltgt]: https://github.com/dominictarr/ltgt
 [jitdb-results]: https://github.com/arj03/jitdb/blob/master/bench.txt
 [ssb-db2]: https://github.com/ssb-ngi-pointer/ssb-db2/
+```
