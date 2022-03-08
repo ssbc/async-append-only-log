@@ -100,19 +100,20 @@ tape('second', function (t) {
 
 var msg3 = Buf(0x30, 30)
 tape('live', function (t) {
-  var sink = push.collect((err) => {
-    if (err === 'tape-ended') return
-    else throw new Error('live stream should not end')
+  const expected = [msg1, msg2, msg3]
+  const logStream = log.stream({ live: true, offsets: false })
+  logStream.pipe({
+    paused: false,
+    write(buf) {
+      t.deepEqual(buf, expected.shift())
+      if (expected.length === 0) {
+        logStream.abort()
+        t.end()
+      }
+    },
+    end() {},
   })
-  let logStream = log.stream({ live: true, offsets: false })
-  logStream.pipe(sink)
   log.append(msg3, function (err) {})
-  log.onDrain(function () {
-    t.deepEqual(sink.array, [msg1, msg2, msg3])
-    sink.end('tape-ended')
-    logStream.abort()
-    t.end()
-  })
 })
 
 tape('offsets', function (t) {
@@ -222,27 +223,22 @@ tape('gt -1', function (t) {
 })
 
 tape('live gt', function (t) {
-  var msg4 = Buf(0x40, 40)
-  var sink = push.collect((err) => {
-    if (err === 'tape-ended') return
-    else throw new Error('live stream should not end')
-  })
-  let logStream = log.stream({
+  const msg4 = Buf(0x40, 40)
+  const logStream = log.stream({
     live: true,
     offsets: false,
     gt: 10 + 2 + 20 + 2,
   })
-  logStream.pipe(sink)
-  log.append(msg4, function (err) {})
-  log.onDrain(() => {
-    // need to wait for stream to get changes from save
-    setTimeout(() => {
-      t.deepEqual(sink.array, [msg4])
-      sink.end('tape-ended')
+  logStream.pipe({
+    paused: false,
+    write(buf) {
+      t.deepEqual(buf, msg4)
       logStream.abort()
       t.end()
-    }, 200)
+    },
+    end() {},
   })
+  log.append(msg4, function (err) {})
 })
 
 tape('live gt -1', function (t) {
@@ -255,11 +251,19 @@ tape('live gt -1', function (t) {
   } catch (_) {}
   var newLog = Log(filename1, { blockSize: 64 * 1024 })
 
-  var sink = push.collect((err) => {
-    if (err === 'tape-ended') return
-    else throw new Error('live stream should not end')
-  })
-  let logStream = newLog.stream({ live: true, offsets: false, gt: -1 })
+  const logStream = newLog.stream({ live: true, offsets: false, gt: -1 })
+  const expected = [msg5, msg6]
+  const sink = {
+    paused: false,
+    write(buf) {
+      t.deepEquals(buf, expected.shift())
+      if (expected.length === 0) {
+        logStream.abort()
+        t.end()
+      }
+    },
+    end() {},
+  }
   logStream.pipe(sink)
 
   setTimeout(() => {
@@ -269,15 +273,6 @@ tape('live gt -1', function (t) {
     logStream.resume()
     newLog.append(msg5, function (err) {})
     newLog.append(msg6, function (err) {})
-    newLog.onDrain(() => {
-      // need to wait for stream to get changes from save
-      setTimeout(() => {
-        t.deepEqual(sink.array, [msg5, msg6])
-        sink.end('tape-ended')
-        logStream.abort()
-        t.end()
-      }, 200)
-    })
   }, 100)
 })
 
