@@ -4,6 +4,7 @@
 
 var tape = require('tape')
 var fs = require('fs')
+var push = require('push-stream')
 var Log = require('../')
 
 const filename = '/tmp/dsf-test-stream.log'
@@ -17,20 +18,6 @@ function Buf(fill, length) {
   var b = Buffer.alloc(length)
   b.fill(fill)
   return b
-}
-
-function collect(cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (value) {
-      this.array.push(value)
-    },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    },
-  }
 }
 
 tape('empty', function (t) {
@@ -49,7 +36,7 @@ tape('single', function (t) {
     t.notOk(err)
     log.onDrain(() => {
       log.stream({ offsets: false }).pipe(
-        collect(function (err, ary) {
+        push.collect((err, ary) => {
           t.notOk(err)
           t.deepEqual(ary, [msg1])
           t.end()
@@ -87,7 +74,7 @@ tape('single live pausable', function (t) {
 tape('single, reload', function (t) {
   log = Log(filename, { blockSize: 64 * 1024 })
   log.stream({ offsets: false }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg1])
       t.end()
@@ -101,7 +88,7 @@ tape('second', function (t) {
     t.notOk(err)
     log.onDrain(() => {
       log.stream({ offsets: false }).pipe(
-        collect(function (err, ary) {
+        push.collect((err, ary) => {
           t.notOk(err)
           t.deepEqual(ary, [msg1, msg2])
           t.end()
@@ -113,7 +100,7 @@ tape('second', function (t) {
 
 var msg3 = Buf(0x30, 30)
 tape('live', function (t) {
-  var sink = collect(function (err) {
+  var sink = push.collect((err) => {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
@@ -130,7 +117,7 @@ tape('live', function (t) {
 
 tape('offsets', function (t) {
   log.stream({ offsets: true }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [
         { offset: 0, value: msg1 },
@@ -176,7 +163,7 @@ tape('pausable', function (t) {
 
 tape('limit', function (t) {
   log.stream({ offsets: false, limit: 1 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg1])
       t.end()
@@ -186,7 +173,7 @@ tape('limit', function (t) {
 
 tape('limit gte', function (t) {
   log.stream({ offsets: false, gte: 12, limit: 1 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg2])
       t.end()
@@ -196,7 +183,7 @@ tape('limit gte', function (t) {
 
 tape('gte', function (t) {
   log.stream({ offsets: false, gte: 12 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg2, msg3])
       t.end()
@@ -206,7 +193,7 @@ tape('gte', function (t) {
 
 tape('gt', function (t) {
   log.stream({ offsets: false, gt: 12 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg3])
       t.end()
@@ -216,7 +203,7 @@ tape('gt', function (t) {
 
 tape('gt 0', function (t) {
   log.stream({ offsets: false, gt: 0 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg2, msg3])
       t.end()
@@ -226,7 +213,7 @@ tape('gt 0', function (t) {
 
 tape('gt -1', function (t) {
   log.stream({ offsets: false, gt: -1 }).pipe(
-    collect(function (err, ary) {
+    push.collect((err, ary) => {
       t.notOk(err)
       t.deepEqual(ary, [msg1, msg2, msg3])
       t.end()
@@ -236,7 +223,7 @@ tape('gt -1', function (t) {
 
 tape('live gt', function (t) {
   var msg4 = Buf(0x40, 40)
-  var sink = collect(function (err) {
+  var sink = push.collect((err) => {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })
@@ -268,7 +255,7 @@ tape('live gt -1', function (t) {
   } catch (_) {}
   var newLog = Log(filename1, { blockSize: 64 * 1024 })
 
-  var sink = collect(function (err) {
+  var sink = push.collect((err) => {
     if (err === 'tape-ended') return
     else throw new Error('live stream should not end')
   })

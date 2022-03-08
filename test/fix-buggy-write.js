@@ -4,21 +4,8 @@
 
 var tape = require('tape')
 var fs = require('fs')
+var push = require('push-stream')
 var Offset = require('../')
-
-function collect(cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (v) {
-      this.array.push(v)
-    },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    },
-  }
-}
 
 var file = '/tmp/ds-test_restart.log'
 
@@ -43,7 +30,7 @@ tape('simple', function (t) {
 
       db.onDrain(() => {
         db.stream({ offsets: false }).pipe(
-          collect(function (err, ary) {
+          push.collect((err, ary) => {
             t.deepEqual(ary, [msg1, msg2])
             t.end()
           })
@@ -61,7 +48,7 @@ tape('simple reread', function (t) {
 
   db.onReady(() => {
     db.stream({ offsets: false }).pipe(
-      collect(function (err, ary) {
+      push.collect((err, ary) => {
         t.deepEqual(ary, [msg1, msg2])
         t.end()
       })

@@ -4,6 +4,7 @@
 
 const tape = require('tape')
 const fs = require('fs')
+const push = require('push-stream')
 const Log = require('../')
 const TooHot = require('too-hot')
 
@@ -118,20 +119,6 @@ for (var run = 0; run < 10; ++run) {
   })
 }
 
-function collect(cb) {
-  return {
-    array: [],
-    paused: false,
-    write: function (value) {
-      this.array.push(value)
-    },
-    end: function (err) {
-      this.ended = err || true
-      cb(err, this.array)
-    },
-  }
-}
-
 for (var run = 0; run < 10; ++run) {
   tape('live stress', function (t) {
     const filename = '/tmp/async-flumelog-live-stress.log'
@@ -171,7 +158,7 @@ for (var run = 0; run < 10; ++run) {
       return s
     }
 
-    var sink = collect(function () {
+    var sink = push.collect(() => {
       throw new Error('live stream should not end')
     })
     db.stream({ live: true, offsets: false }).pipe(sink)
@@ -249,7 +236,7 @@ for (var run = 0; run < 10; ++run) {
       return s
     }
 
-    var sink = collect(function () {
+    var sink = push.collect(() => {
       throw new Error('live stream should not end')
     })
     const stream = db.stream({ live: true, offsets: false })
