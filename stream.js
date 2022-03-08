@@ -10,7 +10,7 @@ module.exports = Stream
 const BLOCK_STATE = Object.freeze({
   GET_NEXT_BLOCK: 0,
   END_OF_STREAM: 1,
-  PAUSED: 2
+  PAUSED: 2,
 })
 
 const STREAM_STATE = Object.freeze({
@@ -18,10 +18,10 @@ const STREAM_STATE = Object.freeze({
   LOADED: 1,
   RUNNING: 2,
   PAUSED: 3,
-  ENDED: 4
+  ENDED: 4,
 })
 
-function Stream (blocks, opts) {
+function Stream(blocks, opts) {
   opts = opts || {}
 
   this.blocks = blocks
@@ -35,12 +35,10 @@ function Stream (blocks, opts) {
   this.state = STREAM_STATE.INITIALIZING
 
   this.min = ltgt.lowerBound(opts, null)
-  if (ltgt.lowerBoundInclusive(opts))
-    this.min_inclusive = this.min
+  if (ltgt.lowerBoundInclusive(opts)) this.min_inclusive = this.min
 
   this.max = ltgt.upperBound(opts, null)
-  if (ltgt.upperBoundInclusive(opts))
-    this.max_inclusive = this.max
+  if (ltgt.upperBoundInclusive(opts)) this.max_inclusive = this.max
 
   // this is properly initialized when this.blocks is ready
   this.cursor = -1
@@ -69,13 +67,9 @@ Stream.prototype._ready = function () {
   if (this.opts.gt >= 0) this.skip_next = true
 
   if (this.cursor === 0 && this.blocks.since.value === -1) {
-    if (!this.live)
-      this.state = STREAM_STATE.ENDED
-    else
-      this.state = STREAM_STATE.INITIALIZING // still not ready
-  }
-  else
-    this.state = STREAM_STATE.LOADED
+    if (!this.live) this.state = STREAM_STATE.ENDED
+    else this.state = STREAM_STATE.INITIALIZING // still not ready
+  } else this.state = STREAM_STATE.LOADED
 
   this.resume()
 }
@@ -84,13 +78,11 @@ Stream.prototype._writeToSink = function (data) {
   if (this.values) {
     if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
     else this.sink.write(data)
-  }
-  else
-    this.sink.write(this.cursor)
+  } else this.sink.write(this.cursor)
 }
 
 // returns a new BLOCK_STATE
-Stream.prototype._handleBlock = function(block) {
+Stream.prototype._handleBlock = function (block) {
   while (true) {
     if (this.sink.paused) return BLOCK_STATE.PAUSED
 
@@ -102,11 +94,8 @@ Stream.prototype._handleBlock = function(block) {
       if (offset > 0) {
         this.cursor = offset
         continue
-      }
-      else if (offset === 0)
-        return BLOCK_STATE.GET_NEXT_BLOCK
-      else if (offset === -1)
-        return BLOCK_STATE.END_OF_STREAM
+      } else if (offset === 0) return BLOCK_STATE.GET_NEXT_BLOCK
+      else if (offset === -1) return BLOCK_STATE.END_OF_STREAM
     }
 
     this.count++
@@ -119,17 +108,13 @@ Stream.prototype._handleBlock = function(block) {
     ) {
       this._writeToSink(data)
 
-      if (offset > 0)
-        this.cursor = offset
-      else if (offset === 0)
-        return BLOCK_STATE.GET_NEXT_BLOCK
-      else if (offset === -1)
-        return BLOCK_STATE.END_OF_STREAM
+      if (offset > 0) this.cursor = offset
+      else if (offset === 0) return BLOCK_STATE.GET_NEXT_BLOCK
+      else if (offset === -1) return BLOCK_STATE.END_OF_STREAM
 
       if (this.limit > 0 && this.count >= this.limit)
         return BLOCK_STATE.END_OF_STREAM
-    } else
-      return BLOCK_STATE.END_OF_STREAM
+    } else return BLOCK_STATE.END_OF_STREAM
   }
 }
 
@@ -139,8 +124,7 @@ Stream.prototype._resume = function () {
     return
   }
 
-  if (this.state === STREAM_STATE.INITIALIZING)
-    return // not ready yet
+  if (this.state === STREAM_STATE.INITIALIZING) return // not ready yet
 
   if (!this.sink || this.sink.paused) {
     this.state = STREAM_STATE.PAUSED
@@ -162,13 +146,10 @@ Stream.prototype._resumeCallback = function (err, block) {
   if (blockState === BLOCK_STATE.GET_NEXT_BLOCK) {
     this.cursor = this.blocks.getNextBlockIndex(this.cursor)
     this._next()
-  }
-  else if (blockState === BLOCK_STATE.PAUSED) {
+  } else if (blockState === BLOCK_STATE.PAUSED) {
     this.state = STREAM_STATE.PAUSED
-  }
-  else if (blockState === BLOCK_STATE.END_OF_STREAM) {
-    if (!this.live)
-      this.abort()
+  } else if (blockState === BLOCK_STATE.END_OF_STREAM) {
+    if (!this.live) this.abort()
     else {
       this.state = STREAM_STATE.PAUSED
       this.skip_next = true
@@ -184,8 +165,7 @@ Stream.prototype.resume = function () {
 }
 
 Stream.prototype.liveResume = function () {
-  if (this.state === STREAM_STATE.INITIALIZING)
-    this.state = STREAM_STATE.LOADED
+  if (this.state === STREAM_STATE.INITIALIZING) this.state = STREAM_STATE.LOADED
 
   this.resume()
 }
