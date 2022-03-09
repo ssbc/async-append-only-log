@@ -21,10 +21,10 @@ const STREAM_STATE = Object.freeze({
   ENDED: 4,
 })
 
-function Stream(blocks, opts) {
+function Stream(log, opts) {
   opts = opts || {}
 
-  this.blocks = blocks
+  this.log = log
 
   // configs
   this.live = !!opts.live
@@ -40,7 +40,7 @@ function Stream(blocks, opts) {
   this.max = ltgt.upperBound(opts, null)
   if (ltgt.upperBoundInclusive(opts)) this.max_inclusive = this.max
 
-  // this is properly initialized when this.blocks is ready
+  // this is properly initialized when this.log is ready
   this.cursor = -1
 
   // used together with limit
@@ -55,10 +55,10 @@ function Stream(blocks, opts) {
   this._resumeCallback = this._resumeCallback.bind(this)
   this._resume = this._resume.bind(this)
 
-  this.blocks.onReady(this._ready.bind(this))
+  this.log.onReady(this._ready.bind(this))
 }
 
-Stream.prototype._ready = function () {
+Stream.prototype._ready = function _ready() {
   //note: cursor has default of the current length or zero.
   this.cursor = ltgt.lowerBound(this.opts, 0)
 
@@ -66,7 +66,7 @@ Stream.prototype._ready = function () {
 
   if (this.opts.gt >= 0) this.skip_next = true
 
-  if (this.cursor === 0 && this.blocks.since.value === -1) {
+  if (this.cursor === 0 && this.log.since.value === -1) {
     if (!this.live) this.state = STREAM_STATE.ENDED
     else this.state = STREAM_STATE.INITIALIZING // still not ready
   } else this.state = STREAM_STATE.LOADED
@@ -74,7 +74,7 @@ Stream.prototype._ready = function () {
   this.resume()
 }
 
-Stream.prototype._writeToSink = function (data) {
+Stream.prototype._writeToSink = function _writeToSink(data) {
   if (this.values) {
     if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
     else this.sink.write(data)
@@ -82,11 +82,11 @@ Stream.prototype._writeToSink = function (data) {
 }
 
 // returns a new BLOCK_STATE
-Stream.prototype._handleBlock = function (block) {
+Stream.prototype._handleBlock = function _handleBlock(blockBuf) {
   while (true) {
     if (this.sink.paused) return BLOCK_STATE.PAUSED
 
-    const [offset, data] = this.blocks.getDataNextOffset(block, this.cursor)
+    const [offset, data] = this.log.getDataNextOffset(blockBuf, this.cursor)
 
     if (this.skip_next) {
       this.skip_next = false
@@ -118,7 +118,7 @@ Stream.prototype._handleBlock = function (block) {
   }
 }
 
-Stream.prototype._resume = function () {
+Stream.prototype._resume = function _resume() {
   if (this.state === STREAM_STATE.ENDED) {
     if (this.sink && !this.sink.ended) this.abort()
     return
@@ -133,10 +133,10 @@ Stream.prototype._resume = function () {
 
   this.state = STREAM_STATE.RUNNING
 
-  this.blocks.getBlock(this.cursor, this._resumeCallback)
+  this.log.getBlock(this.cursor, this._resumeCallback)
 }
 
-Stream.prototype._resumeCallback = function (err, block) {
+Stream.prototype._resumeCallback = function _resumeCallback(err, block) {
   if (err) {
     console.error(err)
     return
@@ -144,7 +144,7 @@ Stream.prototype._resumeCallback = function (err, block) {
 
   const blockState = this._handleBlock(block)
   if (blockState === BLOCK_STATE.GET_NEXT_BLOCK) {
-    this.cursor = this.blocks.getNextBlockIndex(this.cursor)
+    this.cursor = this.log.getNextBlockIndex(this.cursor)
     this._next()
   } else if (blockState === BLOCK_STATE.PAUSED) {
     this.state = STREAM_STATE.PAUSED
@@ -157,23 +157,23 @@ Stream.prototype._resumeCallback = function (err, block) {
   }
 }
 
-Stream.prototype.resume = function () {
+Stream.prototype.resume = function resume() {
   if (this.state === STREAM_STATE.RUNNING) return
 
   this._next = looper(this._resume)
   this._next()
 }
 
-Stream.prototype.liveResume = function () {
+Stream.prototype.liveResume = function liveResume() {
   if (this.state === STREAM_STATE.INITIALIZING) this.state = STREAM_STATE.LOADED
 
   this.resume()
 }
 
-Stream.prototype.abort = function (err) {
+Stream.prototype.abort = function abort(err) {
   this.state = STREAM_STATE.ENDED
-  const i = this.blocks.streams.indexOf(this)
-  if (~i) this.blocks.streams.splice(i, 1)
+  const i = this.log.streams.indexOf(this)
+  if (~i) this.log.streams.splice(i, 1)
   if (!this.sink.ended && this.sink.end) {
     this.sink.ended = true
     this.sink.end(err === true ? null : err)
