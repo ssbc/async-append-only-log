@@ -31,37 +31,39 @@ module.exports = function (filename, opts) {
 
   const waiting = []
   const waitingDrain = new Map() // blockIndex -> []
-  const blocksToBeWritten = new Map() // blockIndex -> { blockBuf, fileOffset }
+  const blocksToBeWritten = new Map() // blockIndex -> { blockBuf, offset }
   let writingBlockIndex = -1
 
   let latestBlockBuf = null
   let latestBlockIndex = null
-  let nextWriteBlockOffset = null
+  let nextOffsetInBlock = null
 
   raf.stat(function (err, stat) {
     if (err) debug('failed to stat ' + filename, err)
 
-    const len = stat ? stat.size : -1
+    const fileSize = stat ? stat.size : -1
 
-    if (len <= 0) {
+    if (fileSize <= 0) {
       debug('empty file')
       latestBlockBuf = Buffer.alloc(blockSize)
       latestBlockIndex = 0
-      nextWriteBlockOffset = 0
+      nextOffsetInBlock = 0
       cache.set(0, latestBlockBuf)
       since.set(-1)
       while (waiting.length) waiting.shift()()
     } else {
-      raf.read(len - blockSize, blockSize, (err, blockBuf) => {
+      const blockStart = fileSize - blockSize
+      raf.read(blockStart, blockSize, (err, blockBuf) => {
         if (err) throw err
 
-        getLastGoodRecord(blockBuf, len - blockSize, (err, recordOffset) => {
-          since.set(len - blockSize + recordOffset)
+        getLastGoodRecord(blockBuf, blockStart, (err, offsetInBlock) => {
+          if (err) throw err
+          since.set(blockStart + offsetInBlock)
 
           latestBlockBuf = blockBuf
-          const recordLength = blockBuf.readUInt16LE(recordOffset)
-          nextWriteBlockOffset = recordOffset + 2 + recordLength
-          latestBlockIndex = len / blockSize - 1
+          const recordLength = blockBuf.readUInt16LE(offsetInBlock)
+          nextOffsetInBlock = offsetInBlock + 2 + recordLength
+          latestBlockIndex = fileSize / blockSize - 1
 
           debug('opened file, since: %d', since.value)
 
@@ -71,12 +73,12 @@ module.exports = function (filename, opts) {
     }
   })
 
-  function getRecordOffset(offset) {
+  function getOffsetInBlock(offset) {
     return offset % blockSize
   }
 
   function getBlockStart(offset) {
-    return offset - getRecordOffset(offset)
+    return offset - getOffsetInBlock(offset)
   }
 
   function getBlockIndex(offset) {
@@ -89,9 +91,9 @@ module.exports = function (filename, opts) {
 
   const writeLock = mutexify()
 
-  function writeWithFSync(offset, blockBuf, successValue, cb) {
+  function writeWithFSync(blockStart, blockBuf, successValue, cb) {
     writeLock((unlock) => {
-      raf.write(offset, blockBuf, (err) => {
+      raf.write(blockStart, blockBuf, (err) => {
         if (err) return unlock(cb, err)
 
         if (raf.fd) {
@@ -104,39 +106,40 @@ module.exports = function (filename, opts) {
     })
   }
 
-  function fixBlock(blockBuf, i, offset, lastOk, cb) {
-    debug('found record that does not validate, fixing last block', i)
-
-    const goodData = blockBuf.slice(0, i)
-    const newBlockBuf = Buffer.alloc(blockSize)
-    goodData.copy(newBlockBuf, 0)
-
-    writeWithFSync(offset, newBlockBuf, lastOk, cb)
+  function fixBlock(blockBuf, badOffsetInBlock, blockStart, successValue, cb) {
+    debug('found invalid record at %d, fixing last block', badOffsetInBlock)
+    blockBuf.fill(0, badOffsetInBlock, blockSize)
+    writeWithFSync(blockStart, blockBuf, successValue, cb)
   }
 
-  function getLastGoodRecord(blockBuf, offset, cb) {
-    let lastOk = 0
-    for (let i = 0; i < blockBuf.length; ) {
-      const length = blockBuf.readUInt16LE(i)
+  function getLastGoodRecord(blockBuf, blockStart, cb) {
+    let lastGoodOffset = 0
+    for (let offsetInRecord = 0; offsetInRecord < blockSize; ) {
+      const length = blockBuf.readUInt16LE(offsetInRecord)
       if (length === 0) break
       else {
-        if (i + 2 + length > blockSize) {
+        if (offsetInRecord + 2 + length > blockSize) {
           // corrupt length data
-          return fixBlock(blockBuf, i, offset, lastOk, cb)
+          fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
+          return
         } else {
-          const data = blockBuf.slice(i + 2, i + 2 + length)
-          if (validateRecord(data)) {
-            lastOk = i
-            i += 2 + length
+          const dataBuf = blockBuf.slice(
+            offsetInRecord + 2,
+            offsetInRecord + 2 + length
+          )
+          if (validateRecord(dataBuf)) {
+            lastGoodOffset = offsetInRecord
+            offsetInRecord += 2 + length
           } else {
             // corrupt message data
-            return fixBlock(blockBuf, i, offset, lastOk, cb)
+            fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
+            return
           }
         }
       }
     }
 
-    cb(null, lastOk)
+    cb(null, lastGoodOffset)
   }
 
   function getBlock(offset, cb) {
@@ -156,9 +159,9 @@ module.exports = function (filename, opts) {
     }
   }
 
-  function getData(blockBuf, recordOffset, cb) {
-    const length = blockBuf.readUInt16LE(recordOffset)
-    const data = blockBuf.slice(recordOffset + 2, recordOffset + 2 + length)
+  function getData(blockBuf, offsetInBlock, cb) {
+    const length = blockBuf.readUInt16LE(offsetInBlock)
+    const data = blockBuf.slice(offsetInBlock + 2, offsetInBlock + 2 + length)
 
     if (data.every((x) => x === 0)) {
       const err = new Error('item has been deleted')
@@ -174,7 +177,7 @@ module.exports = function (filename, opts) {
 
     getBlock(offset, (err, blockBuf) => {
       if (err) return cb(err)
-      getData(blockBuf, getRecordOffset(offset), cb)
+      getData(blockBuf, getOffsetInBlock(offset), cb)
     })
   }
 
@@ -183,14 +186,14 @@ module.exports = function (filename, opts) {
   //  0: need a new block
   // >0: next record within block
   function getDataNextOffset(blockBuf, offset) {
-    const recordOffset = getRecordOffset(offset)
+    const offsetInBlock = getOffsetInBlock(offset)
     const blockIndex = getBlockIndex(offset)
 
-    const length = blockBuf.readUInt16LE(recordOffset)
-    const data = blockBuf.slice(recordOffset + 2, recordOffset + 2 + length)
+    const length = blockBuf.readUInt16LE(offsetInBlock)
+    const data = blockBuf.slice(offsetInBlock + 2, offsetInBlock + 2 + length)
 
-    const nextLength = blockBuf.readUInt16LE(recordOffset + 2 + length)
-    let nextOffset = recordOffset + 2 + length + blockIndex * blockSize
+    const nextLength = blockBuf.readUInt16LE(offsetInBlock + 2 + length)
+    let nextOffset = offsetInBlock + 2 + length + blockIndex * blockSize
     if (nextLength === 0 && getNextBlockIndex(offset) > since.value)
       nextOffset = -1
     else if (nextLength === 0) nextOffset = 0
@@ -203,12 +206,12 @@ module.exports = function (filename, opts) {
     getBlock(offset, (err, blockBuf) => {
       if (err) return cb(err)
 
-      const recordOffset = getRecordOffset(offset)
-      const recordLength = blockBuf.readUInt16LE(recordOffset)
-      blockBuf.fill(0, recordOffset + 2, recordOffset + 2 + recordLength)
+      const offsetInBlock = getOffsetInBlock(offset)
+      const recordLength = blockBuf.readUInt16LE(offsetInBlock)
+      blockBuf.fill(0, offsetInBlock + 2, offsetInBlock + 2 + recordLength)
 
       // we write directly here to make normal write simpler
-      writeWithFSync(offset - recordOffset, blockBuf, null, cb)
+      writeWithFSync(offset - offsetInBlock, blockBuf, null, cb)
     })
   }
 
@@ -230,35 +233,35 @@ module.exports = function (filename, opts) {
     if (recordSize(encodedData) + 2 > blockSize)
       throw new Error('data larger than block size')
 
-    if (nextWriteBlockOffset + recordSize(encodedData) + 2 > blockSize) {
+    if (nextOffsetInBlock + recordSize(encodedData) + 2 > blockSize) {
       // doesn't fit
       const nextBlockBuf = Buffer.alloc(blockSize)
       latestBlockBuf = nextBlockBuf
       latestBlockIndex += 1
-      nextWriteBlockOffset = 0
+      nextOffsetInBlock = 0
       debug("data doesn't fit current block, creating new")
     }
 
-    appendRecord(latestBlockBuf, encodedData, nextWriteBlockOffset)
+    appendRecord(latestBlockBuf, encodedData, nextOffsetInBlock)
     cache.set(latestBlockIndex, latestBlockBuf) // update cache
-    const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
-    nextWriteBlockOffset += recordSize(encodedData)
+    const offset = nextOffsetInBlock + latestBlockIndex * blockSize
+    nextOffsetInBlock += recordSize(encodedData)
     blocksToBeWritten.set(latestBlockIndex, {
       blockBuf: latestBlockBuf,
-      fileOffset,
+      offset,
     })
     scheduleWrite()
-    debug('data inserted at offset %d', fileOffset)
-    return fileOffset
+    debug('data inserted at offset %d', offset)
+    return offset
   }
 
   function append(data, cb) {
     if (Array.isArray(data)) {
-      let fileOffset = 0
+      let offset = 0
       for (let i = 0, length = data.length; i < length; ++i)
-        fileOffset = appendSingle(data[i])
+        offset = appendSingle(data[i])
 
-      cb(null, fileOffset)
+      cb(null, offset)
     } else cb(null, appendSingle(data))
   }
 
@@ -283,32 +286,32 @@ module.exports = function (filename, opts) {
 
     if (size > blockSize) return cb(new Error('data larger than block size'))
 
-    if (nextWriteBlockOffset + size > blockSize) {
+    if (nextOffsetInBlock + size > blockSize) {
       // doesn't fit
       const nextBlockBuf = Buffer.alloc(blockSize)
       latestBlockBuf = nextBlockBuf
       latestBlockIndex += 1
-      nextWriteBlockOffset = 0
+      nextOffsetInBlock = 0
       debug("data doesn't fit current block, creating new")
     }
 
-    const fileOffsets = []
+    const offsets = []
     encodedDataArray.forEach((encodedData) => {
-      appendRecord(latestBlockBuf, encodedData, nextWriteBlockOffset)
+      appendRecord(latestBlockBuf, encodedData, nextOffsetInBlock)
       cache.set(latestBlockIndex, latestBlockBuf) // update cache
-      const fileOffset = nextWriteBlockOffset + latestBlockIndex * blockSize
-      fileOffsets.push(fileOffset)
-      nextWriteBlockOffset += recordSize(encodedData)
+      const offset = nextOffsetInBlock + latestBlockIndex * blockSize
+      offsets.push(offset)
+      nextOffsetInBlock += recordSize(encodedData)
       blocksToBeWritten.set(latestBlockIndex, {
         blockBuf: latestBlockBuf,
-        fileOffset,
+        offset,
       })
-      debug('data inserted at offset %d', fileOffset)
+      debug('data inserted at offset %d', offset)
     })
 
     scheduleWrite()
 
-    return cb(null, fileOffsets)
+    return cb(null, offsets)
   }
 
   const scheduleWrite = debounce(write, writeTimeout)
@@ -316,7 +319,7 @@ module.exports = function (filename, opts) {
   function writeBlock(blockIndex) {
     if (!blocksToBeWritten.has(blockIndex)) return
     writingBlockIndex = blockIndex
-    const { blockBuf, fileOffset } = blocksToBeWritten.get(blockIndex)
+    const { blockBuf, offset } = blocksToBeWritten.get(blockIndex)
     blocksToBeWritten.delete(blockIndex)
 
     debug(
@@ -331,7 +334,7 @@ module.exports = function (filename, opts) {
         debug('failed to write block %d', blockIndex)
         throw err
       } else {
-        since.set(fileOffset)
+        since.set(offset)
 
         // write values to live streams
         self.streams.forEach((stream) => {
