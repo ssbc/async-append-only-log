@@ -71,7 +71,7 @@ module.exports = function (filename, opts) {
 
           latestBlockBuf = blockBuf
           latestBlockIndex = fileSize / blockSize - 1
-          const recSize = Record.size(blockBuf, offsetInBlock)
+          const recSize = Record.readSize(blockBuf, offsetInBlock)
           nextOffsetInBlock = offsetInBlock + recSize
           since.set(blockStart + offsetInBlock)
 
