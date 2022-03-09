@@ -11,6 +11,18 @@ const fs = require('fs')
 const mutexify = require('mutexify')
 
 const Stream = require('./stream')
+const Record = require('./record')
+
+/**
+ * The "End of Block" is a special field used to mark the end of a block, and
+ * in practice it's like a Record header "length" field, with the value 0.
+ * In most cases, the end region of a block will have a larger length than this,
+ * but we want to guarantee there is at *least* this many bytes at the end.
+ */
+const EOB = {
+  SIZE: Record.HEADER_SIZE,
+  asNumber: 0,
+}
 
 const DEFAULT_BLOCK_SIZE = 65536
 const DEFAULT_CODEC = { encode: (x) => x, decode: (x) => x }
@@ -26,9 +38,6 @@ module.exports = function (filename, opts) {
   const validateRecord = (opts && opts.validateRecord) || DEFAULT_VALIDATE
   let self
 
-  // offset of last written record
-  const since = Obv()
-
   const waiting = []
   const waitingDrain = new Map() // blockIndex -> []
   const blocksToBeWritten = new Map() // blockIndex -> { blockBuf, offset }
@@ -37,6 +46,7 @@ module.exports = function (filename, opts) {
   let latestBlockBuf = null
   let latestBlockIndex = null
   let nextOffsetInBlock = null
+  const since = Obv() // offset of last written record
 
   raf.stat(function (err, stat) {
     if (err) debug('failed to stat ' + filename, err)
@@ -48,8 +58,8 @@ module.exports = function (filename, opts) {
       latestBlockBuf = Buffer.alloc(blockSize)
       latestBlockIndex = 0
       nextOffsetInBlock = 0
-      cache.set(0, latestBlockBuf)
       since.set(-1)
+      cache.set(0, latestBlockBuf)
       while (waiting.length) waiting.shift()()
     } else {
       const blockStart = fileSize - blockSize
@@ -58,12 +68,12 @@ module.exports = function (filename, opts) {
 
         getLastGoodRecord(blockBuf, blockStart, (err, offsetInBlock) => {
           if (err) throw err
-          since.set(blockStart + offsetInBlock)
 
           latestBlockBuf = blockBuf
-          const recordLength = blockBuf.readUInt16LE(offsetInBlock)
-          nextOffsetInBlock = offsetInBlock + 2 + recordLength
           latestBlockIndex = fileSize / blockSize - 1
+          const recSize = Record.size(blockBuf, offsetInBlock)
+          nextOffsetInBlock = offsetInBlock + recSize
+          since.set(blockStart + offsetInBlock)
 
           debug('opened file, since: %d', since.value)
 
@@ -115,21 +125,18 @@ module.exports = function (filename, opts) {
   function getLastGoodRecord(blockBuf, blockStart, cb) {
     let lastGoodOffset = 0
     for (let offsetInRecord = 0; offsetInRecord < blockSize; ) {
-      const length = blockBuf.readUInt16LE(offsetInRecord)
-      if (length === 0) break
+      const length = Record.readDataLength(blockBuf, offsetInRecord)
+      if (length === EOB.asNumber) break
       else {
-        if (offsetInRecord + 2 + length > blockSize) {
+        const [dataBuf, recSize] = Record.read(blockBuf, offsetInRecord)
+        if (offsetInRecord + recSize > blockSize) {
           // corrupt length data
           fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
           return
         } else {
-          const dataBuf = blockBuf.slice(
-            offsetInRecord + 2,
-            offsetInRecord + 2 + length
-          )
           if (validateRecord(dataBuf)) {
             lastGoodOffset = offsetInRecord
-            offsetInRecord += 2 + length
+            offsetInRecord += recSize
           } else {
             // corrupt message data
             fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
@@ -160,14 +167,13 @@ module.exports = function (filename, opts) {
   }
 
   function getData(blockBuf, offsetInBlock, cb) {
-    const length = blockBuf.readUInt16LE(offsetInBlock)
-    const data = blockBuf.slice(offsetInBlock + 2, offsetInBlock + 2 + length)
+    const [dataBuf] = Record.read(blockBuf, offsetInBlock)
 
-    if (data.every((x) => x === 0)) {
+    if (dataBuf.every((x) => x === 0)) {
       const err = new Error('item has been deleted')
       err.code = 'flumelog:deleted'
       return cb(err)
-    } else cb(null, codec.decode(data))
+    } else cb(null, codec.decode(dataBuf))
   }
 
   function get(offset, cb) {
@@ -182,58 +188,44 @@ module.exports = function (filename, opts) {
   }
 
   // nextOffset can take 3 values:
-  // -1: end of stream
+  // -1: end of log
   //  0: need a new block
   // >0: next record within block
   function getDataNextOffset(blockBuf, offset) {
     const offsetInBlock = getOffsetInBlock(offset)
-    const blockIndex = getBlockIndex(offset)
+    const [dataBuf, recSize] = Record.read(blockBuf, offsetInBlock)
+    const nextLength = Record.readDataLength(blockBuf, offsetInBlock + recSize)
 
-    const length = blockBuf.readUInt16LE(offsetInBlock)
-    const data = blockBuf.slice(offsetInBlock + 2, offsetInBlock + 2 + length)
+    let nextOffset
+    if (nextLength === EOB.asNumber) {
+      if (getNextBlockIndex(offset) > since.value) nextOffset = -1
+      else nextOffset = 0
+    } else {
+      nextOffset = offset + recSize
+    }
 
-    const nextLength = blockBuf.readUInt16LE(offsetInBlock + 2 + length)
-    let nextOffset = offsetInBlock + 2 + length + blockIndex * blockSize
-    if (nextLength === 0 && getNextBlockIndex(offset) > since.value)
-      nextOffset = -1
-    else if (nextLength === 0) nextOffset = 0
-
-    if (data.every((x) => x === 0)) return [nextOffset, null]
-    else return [nextOffset, codec.decode(data)]
+    if (dataBuf.every((x) => x === 0)) return [nextOffset, null]
+    else return [nextOffset, codec.decode(dataBuf)]
   }
 
   function del(offset, cb) {
     getBlock(offset, (err, blockBuf) => {
       if (err) return cb(err)
-
-      const offsetInBlock = getOffsetInBlock(offset)
-      const recordLength = blockBuf.readUInt16LE(offsetInBlock)
-      blockBuf.fill(0, offsetInBlock + 2, offsetInBlock + 2 + recordLength)
-
+      Record.overwriteWithZeroes(blockBuf, getOffsetInBlock(offset))
       // we write directly here to make normal write simpler
-      writeWithFSync(offset - offsetInBlock, blockBuf, null, cb)
+      const blockStart = getBlockStart(offset)
+      writeWithFSync(blockStart, blockBuf, null, cb)
     })
-  }
-
-  function appendRecord(blockBuf, data, offset) {
-    blockBuf.writeUInt16LE(data.length, offset)
-    data.copy(blockBuf, offset + 2)
-  }
-
-  function recordSize(dataBuf) {
-    return dataBuf.length + 2
   }
 
   function appendSingle(data) {
     let encodedData = codec.encode(data)
     if (typeof encodedData === 'string') encodedData = Buffer.from(encodedData)
 
-    // we always leave 2 bytes at the end as the last record must be
-    // followed by a 0 (length) to signal end of record
-    if (recordSize(encodedData) + 2 > blockSize)
+    if (Record.size(encodedData) + EOB.SIZE > blockSize)
       throw new Error('data larger than block size')
 
-    if (nextOffsetInBlock + recordSize(encodedData) + 2 > blockSize) {
+    if (nextOffsetInBlock + Record.size(encodedData) + EOB.SIZE > blockSize) {
       // doesn't fit
       const nextBlockBuf = Buffer.alloc(blockSize)
       latestBlockBuf = nextBlockBuf
@@ -242,16 +234,16 @@ module.exports = function (filename, opts) {
       debug("data doesn't fit current block, creating new")
     }
 
-    appendRecord(latestBlockBuf, encodedData, nextOffsetInBlock)
+    Record.write(latestBlockBuf, nextOffsetInBlock, encodedData)
     cache.set(latestBlockIndex, latestBlockBuf) // update cache
-    const offset = nextOffsetInBlock + latestBlockIndex * blockSize
-    nextOffsetInBlock += recordSize(encodedData)
+    const offset = latestBlockIndex * blockSize + nextOffsetInBlock
     blocksToBeWritten.set(latestBlockIndex, {
       blockBuf: latestBlockBuf,
       offset,
     })
     scheduleWrite()
     debug('data inserted at offset %d', offset)
+    nextOffsetInBlock += Record.size(encodedData)
     return offset
   }
 
@@ -276,13 +268,11 @@ module.exports = function (filename, opts) {
       let encodedData = codec.encode(data)
       if (typeof encodedData === 'string')
         encodedData = Buffer.from(encodedData)
-      size += recordSize(encodedData)
+      size += Record.size(encodedData)
       return encodedData
     })
 
-    // we always leave 2 bytes at the end as the last record must be
-    // followed by a 0 (length) to signal end of record
-    size += 2
+    size += EOB.SIZE
 
     if (size > blockSize) return cb(new Error('data larger than block size'))
 
@@ -296,18 +286,18 @@ module.exports = function (filename, opts) {
     }
 
     const offsets = []
-    encodedDataArray.forEach((encodedData) => {
-      appendRecord(latestBlockBuf, encodedData, nextOffsetInBlock)
+    for (const encodedData of encodedDataArray) {
+      Record.write(latestBlockBuf, nextOffsetInBlock, encodedData)
       cache.set(latestBlockIndex, latestBlockBuf) // update cache
-      const offset = nextOffsetInBlock + latestBlockIndex * blockSize
+      const offset = latestBlockIndex * blockSize + nextOffsetInBlock
       offsets.push(offset)
-      nextOffsetInBlock += recordSize(encodedData)
       blocksToBeWritten.set(latestBlockIndex, {
         blockBuf: latestBlockBuf,
         offset,
       })
       debug('data inserted at offset %d', offset)
-    })
+      nextOffsetInBlock += Record.size(encodedData)
+    }
 
     scheduleWrite()
 
