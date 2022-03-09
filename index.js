@@ -201,8 +201,7 @@ module.exports = function (filename, opts) {
 
       const recordOffset = getRecordOffset(offset)
       const recordLength = buffer.readUInt16LE(recordOffset)
-      const nullBytes = Buffer.alloc(recordLength)
-      nullBytes.copy(buffer, recordOffset + 2)
+      buffer.fill(0, recordOffset + 2, recordOffset + 2 + recordLength)
 
       // we write directly here to make normal write simpler
       writeWithFSync(offset - recordOffset, buffer, null, cb)
