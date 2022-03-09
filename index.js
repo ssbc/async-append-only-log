@@ -58,8 +58,8 @@ module.exports = function (filename, opts) {
       latestBlockBuf = Buffer.alloc(blockSize)
       latestBlockIndex = 0
       nextOffsetInBlock = 0
-      since.set(-1)
       cache.set(0, latestBlockBuf)
+      since.set(-1)
       while (waiting.length) waiting.shift()()
     } else {
       const blockStart = fileSize - blockSize
@@ -241,9 +241,9 @@ module.exports = function (filename, opts) {
       blockBuf: latestBlockBuf,
       offset,
     })
+    nextOffsetInBlock += Record.size(encodedData)
     scheduleWrite()
     debug('data inserted at offset %d', offset)
-    nextOffsetInBlock += Record.size(encodedData)
     return offset
   }
 
@@ -295,8 +295,8 @@ module.exports = function (filename, opts) {
         blockBuf: latestBlockBuf,
         offset,
       })
-      debug('data inserted at offset %d', offset)
       nextOffsetInBlock += Record.size(encodedData)
+      debug('data inserted at offset %d', offset)
     }
 
     scheduleWrite()
