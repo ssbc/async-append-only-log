@@ -395,6 +395,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     function onDone(err, newLastBlockIndex) {
       compaction = null
       if (err) return cb(err)
+      if (newLastBlockIndex === latestBlockIndex) {
+        while (waitingCompaction.length) waitingCompaction.shift()()
+        return cb()
+      }
       // delete everything after newLastBlockIndex
       const newSize = newLastBlockIndex * blockSize
       debug('truncating all blocks after block #%d', newLastBlockIndex)
