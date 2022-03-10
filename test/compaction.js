@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2022 Anders Rune Jensen
+//
+// SPDX-License-Identifier: Unlicense
+
 const tape = require('tape')
 const push = require('push-stream')
 const Log = require('../')

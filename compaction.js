@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2022 Anders Rune Jensen
+//
+// SPDX-License-Identifier: LGPL-3.0-only
+
 const Record = require('./record')
 
 module.exports = class Compaction {
