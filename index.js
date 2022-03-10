@@ -19,6 +19,7 @@ const {
 } = require('./errors')
 const Stream = require('./stream')
 const Record = require('./record')
+const Compaction = require('./compaction')
 
 /**
  * The "End of Block" is a special field used to mark the end of a block, and
@@ -54,6 +55,8 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let latestBlockIndex = null
   let nextOffsetInBlock = null
   const since = Obv() // offset of last written record
+  let compaction = null
+  const waitingCompaction = []
 
   raf.stat(function onRAFStatDone(err, stat) {
     if (err) debug('failed to stat ' + filename, err)
@@ -69,6 +72,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       since.set(-1)
       while (waitingLoad.length) waitingLoad.shift()()
     } else {
+      // FIXME: load FUB and if it's >=0, then continue compaction
       const blockStart = fileSize - blockSize
       raf.read(blockStart, blockSize, function lastBlockLoaded(err, blockBuf) {
         if (err) throw err
@@ -123,6 +127,21 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
             else unlock(cb, null, successValue)
           })
         } else unlock(cb, null, successValue)
+      })
+    })
+  }
+
+  function truncateWithFSync(newSize, cb) {
+    writeLock((unlock) => {
+      raf.del(newSize, Infinity, (err) => {
+        if (err) return unlock(cb, err)
+
+        if (raf.fd) {
+          fs.fsync(raf.fd, (err) => {
+            if (err) unlock(cb, err)
+            else unlock(cb, null)
+          })
+        } else unlock(cb, null)
       })
     })
   }
@@ -359,6 +378,40 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
+  function overwrite(blockIndex, blockBuf) {
+    cache.set(blockIndex, blockBuf)
+    const blockStart = blockIndex * blockSize
+    debug('overwriting block at %d', blockStart)
+    writeWithFSync(blockStart, blockBuf, null, (err) => {
+      if (err) throw err
+    })
+  }
+
+  function compact(opts, cb) {
+    if (compaction) {
+      debug('compaction already in progress')
+      return
+    }
+    function onDone(err, newLastBlockIndex) {
+      compaction = null
+      if (err) return cb(err)
+      // delete everything after newLastBlockIndex
+      const newSize = newLastBlockIndex * blockSize
+      debug('truncating all blocks after block #%d', newLastBlockIndex)
+      for (let i = newLastBlockIndex + 1; i < latestBlockIndex; ++i) {
+        cache.delete(i)
+      }
+      truncateWithFSync(newSize, (err) => {
+        if (err) return cb(err)
+        latestBlockIndex = newLastBlockIndex
+        since.set(newSize) // FIXME: smells wrong
+        while (waitingCompaction.length) waitingCompaction.shift()()
+        cb()
+      })
+    }
+    compaction = new Compaction(self, latestBlockIndex, opts, onDone)
+  }
+
   function close(cb) {
     onDrain(function closeAfterHavingDrained() {
       while (self.streams.length)
@@ -375,6 +428,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function onDrain(fn) {
+    if (compaction) {
+      waitingCompaction.push(fn)
+      return
+    }
+    // FIXME: needs to be aware of compaction, and wait for it
     if (blocksToBeWritten.size === 0 && writingBlockIndex === -1) fn()
     else {
       const latestBlockIndex =
@@ -393,6 +451,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     return res
   }
 
+  // FIXME: stream() to find firstUncompactedBlockIndex has to be different from
+  // normal stream() (which itself should start from FUBI)
+
   return (self = {
     // Public API:
     get: onLoad(get),
@@ -401,6 +462,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     appendTransaction: onLoad(appendTransaction),
     close: onLoad(close),
     onDrain: onLoad(onDrain),
+    compact: onLoad(compact),
     since,
     stream(opts) {
       const stream = new Stream(self, opts)
@@ -410,6 +472,8 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
     // Internals:
     filename,
+    blockSize,
+    overwrite,
     // Internals needed for ./stream.js:
     onLoad,
     getNextBlockStart,
