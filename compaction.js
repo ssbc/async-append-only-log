@@ -14,6 +14,7 @@ module.exports = class Compaction {
     this.uncompactedBlockIndex = -1
     this.uncompactedBlockBuf = null
     this.uncompactedOffset = 0
+    this.uncompactedBlockHasHoles = false
 
     this.compactedBlockBuf = null
     this.compactedOffset = 0
@@ -50,6 +51,7 @@ module.exports = class Compaction {
 
         const unshiftedDataBuf = this.getNextUnshifted()
         if (unshiftedDataBuf === null) continue
+        this.uncompactedBlockHasHoles = true
         Record.write(this.compactedBlockBuf, offsetInBlock, unshiftedDataBuf)
         this.uncompactedOffset = nextOffset
       } else {
@@ -58,7 +60,9 @@ module.exports = class Compaction {
       }
 
       if (nextOffset === 0) {
-        this.log.overwrite(this.uncompactedBlockIndex, this.compactedBlockBuf)
+        if (this.uncompactedBlockHasHoles) {
+          this.log.overwrite(this.uncompactedBlockIndex, this.compactedBlockBuf)
+        }
         setImmediate(() => this.compactNextBlock())
         return
       }
@@ -135,6 +139,7 @@ module.exports = class Compaction {
       if (err) return this.onDone(err)
       this.uncompactedBlockBuf = blockBuf
       this.uncompactedOffset = blockStart
+      this.uncompactedBlockHasHoles = false
       this.compactedBlockBuf = Buffer.alloc(this.log.blockSize)
       this.compactedOffset = blockStart
       if (this.unshiftedBlockIndex === this.uncompactedBlockIndex) {
@@ -148,6 +153,7 @@ module.exports = class Compaction {
     this.uncompactedBlockIndex = -1
     this.uncompactedBlockBuf = null
     this.uncompactedOffset = -1
+    this.uncompactedBlockHasHoles = false
     this.compactedBlockBuf = null
     this.compactedOffset = -1
     this.unshiftedBlockIndex = -1
