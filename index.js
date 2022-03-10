@@ -38,7 +38,7 @@ module.exports = function (filename, opts) {
   const validateRecord = (opts && opts.validateRecord) || DEFAULT_VALIDATE
   let self
 
-  const waiting = []
+  const waitingLoad = []
   const waitingDrain = new Map() // blockIndex -> []
   const blocksToBeWritten = new Map() // blockIndex -> { blockBuf, offset }
   let writingBlockIndex = -1
@@ -60,7 +60,7 @@ module.exports = function (filename, opts) {
       nextOffsetInBlock = 0
       cache.set(0, latestBlockBuf)
       since.set(-1)
-      while (waiting.length) waiting.shift()()
+      while (waitingLoad.length) waitingLoad.shift()()
     } else {
       const blockStart = fileSize - blockSize
       raf.read(blockStart, blockSize, (err, blockBuf) => {
@@ -77,7 +77,7 @@ module.exports = function (filename, opts) {
 
           debug('opened file, since: %d', since.value)
 
-          while (waiting.length) waiting.shift()()
+          while (waitingLoad.length) waitingLoad.shift()()
         })
       })
     }
@@ -369,18 +369,10 @@ module.exports = function (filename, opts) {
   }
 
   function onLoad(fn) {
-    return function (arg, cb) {
-      if (latestBlockBuf === null)
-        waiting.push(function () {
-          fn(arg, cb)
-        })
-      else fn(arg, cb)
+    return function waitForLogLoaded(...args) {
+      if (latestBlockBuf === null) waitingLoad.push(fn.bind(null, ...args))
+      else fn(...args)
     }
-  }
-
-  function onReady(fn) {
-    if (latestBlockBuf !== null) fn()
-    else waiting.push(fn)
   }
 
   function onDrain(fn) {
@@ -420,7 +412,7 @@ module.exports = function (filename, opts) {
     // Internals:
     filename,
     // Internals needed for ./stream.js:
-    onReady,
+    onLoad,
     getNextBlockStart,
     getDataNextOffset,
     getBlock,

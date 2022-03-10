@@ -55,7 +55,7 @@ function Stream(log, opts) {
   this._resumeCallback = this._resumeCallback.bind(this)
   this._resume = this._resume.bind(this)
 
-  this.log.onReady(this._ready.bind(this))
+  this.log.onLoad(this._ready.bind(this))()
 }
 
 Stream.prototype._ready = function _ready() {
