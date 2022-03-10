@@ -91,12 +91,12 @@ module.exports = function (filename, opts) {
     return offset - getOffsetInBlock(offset)
   }
 
-  function getBlockIndex(offset) {
-    return getBlockStart(offset) / blockSize
+  function getNextBlockStart(offset) {
+    return getBlockStart(offset) + blockSize
   }
 
-  function getNextBlockIndex(offset) {
-    return (getBlockIndex(offset) + 1) * blockSize
+  function getBlockIndex(offset) {
+    return getBlockStart(offset) / blockSize
   }
 
   const writeLock = mutexify()
@@ -198,7 +198,7 @@ module.exports = function (filename, opts) {
 
     let nextOffset
     if (nextLength === EOB.asNumber) {
-      if (getNextBlockIndex(offset) > since.value) nextOffset = -1
+      if (getNextBlockStart(offset) > since.value) nextOffset = -1
       else nextOffset = 0
     } else {
       nextOffset = offset + recSize
@@ -421,7 +421,7 @@ module.exports = function (filename, opts) {
     filename,
     // Internals needed for ./stream.js:
     onReady,
-    getNextBlockIndex,
+    getNextBlockStart,
     getDataNextOffset,
     getBlock,
     streams: [],

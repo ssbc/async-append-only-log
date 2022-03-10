@@ -144,7 +144,7 @@ Stream.prototype._resumeCallback = function _resumeCallback(err, block) {
 
   const blockState = this._handleBlock(block)
   if (blockState === BLOCK_STATE.GET_NEXT_BLOCK) {
-    this.cursor = this.log.getNextBlockIndex(this.cursor)
+    this.cursor = this.log.getNextBlockStart(this.cursor)
     this._next()
   } else if (blockState === BLOCK_STATE.PAUSED) {
     this.state = STREAM_STATE.PAUSED
