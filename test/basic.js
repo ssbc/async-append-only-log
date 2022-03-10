@@ -76,7 +76,7 @@ tape('basic json re-read', function (t) {
     codec: require('flumecodec/json'),
   })
 
-  db.onReady(() => {
+  db.onDrain(() => {
     t.equal(db.since.value, 20)
     db.get(0, function (err, buf) {
       if (err) throw err

@@ -40,7 +40,7 @@ tape('corrupt message re-read without validation', function (t) {
   var file = '/tmp/jacob.log'
   var db = Log(file, { blockSize: 64 * 1024 })
 
-  db.onReady(() => {
+  db.onDrain(() => {
     var result = []
 
     db.stream({ offsets: false }).pipe({
@@ -71,7 +71,7 @@ tape('corrupt message re-read with validation', function (t) {
     },
   })
 
-  db.onReady(() => {
+  db.onDrain(() => {
     var result = []
 
     db.stream({ offsets: false }).pipe({
@@ -115,7 +115,7 @@ tape('length re-read without validation', function (t) {
     blockSize: 64 * 1024,
   })
 
-  db.onReady(() => {
+  db.onDrain(() => {
     var result = []
 
     db.stream({ offsets: false }).pipe({
@@ -151,7 +151,7 @@ tape('length re-read with validation', function (t) {
     },
   })
 
-  db.onReady(() => {
+  db.onDrain(() => {
     var result = []
 
     db.stream({ offsets: false }).pipe({

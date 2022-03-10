@@ -46,7 +46,7 @@ tape('simple reread', function (t) {
     codec: require('flumecodec/json'),
   })
 
-  db.onReady(() => {
+  db.onDrain(() => {
     db.stream({ offsets: false }).pipe(
       push.collect((err, ary) => {
         t.deepEqual(ary, [msg1, msg2])

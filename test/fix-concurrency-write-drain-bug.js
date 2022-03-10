@@ -22,7 +22,7 @@ tape('check since after drain', async (t) => {
     })
 
     await new Promise((resolve, reject) => {
-      db.onReady(() => {
+      db.onDrain(() => {
         db.append(msg1, (err, offset1) => {
           if (err) reject(err)
 
