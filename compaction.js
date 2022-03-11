@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-only
 
+const debug = require('debug')('async-flumelog')
 const Record = require('./record')
 
 module.exports = class Compaction {
@@ -65,7 +66,11 @@ module.exports = class Compaction {
 
       if (nextOffset === 0) {
         if (this.uncompactedBlockHasHoles) {
-          this.log.overwrite(this.uncompactedBlockIndex, this.compactedBlockBuf)
+          const blockIndex = this.uncompactedBlockIndex
+          this.log.overwrite(blockIndex, this.compactedBlockBuf, (err) => {
+            if (err) throw err
+            debug('compacted block %d', blockIndex)
+          })
         }
         setImmediate(() => this.compactNextBlock())
         return

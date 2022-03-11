@@ -378,13 +378,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
-  function overwrite(blockIndex, blockBuf) {
+  function overwrite(blockIndex, blockBuf, cb) {
     cache.set(blockIndex, blockBuf)
     const blockStart = blockIndex * blockSize
-    debug('overwriting block at %d', blockStart)
-    writeWithFSync(blockStart, blockBuf, null, (err) => {
-      if (err) throw err
-    })
+    writeWithFSync(blockStart, blockBuf, null, cb)
   }
 
   function compact(opts, cb) {
