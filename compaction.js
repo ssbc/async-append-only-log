@@ -15,7 +15,7 @@ module.exports = class Compaction {
     this.uncompactedBlockIndex = -1
     this.uncompactedBlockBuf = null
     this.uncompactedOffset = 0
-    this.uncompactedBlockHasHoles = false
+    this.uncompactedBlockChanged = false
 
     this.compactedBlockBuf = null
     this.compactedOffset = 0
@@ -46,14 +46,16 @@ module.exports = class Compaction {
         }
         // All records have been shifted, end of log reached
         if (this.unshiftedBlockIndex === -1) {
-          // FIXME: finalize ongoing writes before actually stopping
-          this.stop(this.uncompactedBlockIndex)
+          this.saveCompactedBlock((err) => {
+            if (err) throw err
+            this.stop(this.uncompactedBlockIndex)
+          })
           return
         }
 
         const unshiftedDataBuf = this.getNextUnshifted()
         if (unshiftedDataBuf === null) continue
-        this.uncompactedBlockHasHoles = true
+        this.uncompactedBlockChanged = true
         Record.write(this.compactedBlockBuf, offsetInBlock, unshiftedDataBuf)
         this.uncompactedOffset = nextOffset
       } else {
@@ -64,14 +66,8 @@ module.exports = class Compaction {
         }
       }
 
-      if (nextOffset === 0) {
-        if (this.uncompactedBlockHasHoles) {
-          const blockIndex = this.uncompactedBlockIndex
-          this.log.overwrite(blockIndex, this.compactedBlockBuf, (err) => {
-            if (err) throw err
-            debug('compacted block %d', blockIndex)
-          })
-        }
+      if (nextOffset === 0 || nextOffset === -1) {
+        this.saveCompactedBlock()
         setImmediate(() => this.compactNextBlock())
         return
       }
@@ -82,6 +78,22 @@ module.exports = class Compaction {
         // work-in-progress (see the bail out in compactNextBlock())
         throw new Error('this should be unreachable')
       }
+    }
+  }
+
+  saveCompactedBlock(cb) {
+    if (this.uncompactedBlockChanged) {
+      const blockIndex = this.uncompactedBlockIndex
+      this.log.overwrite(blockIndex, this.compactedBlockBuf, (err) => {
+        if (err && cb) cb(err)
+        else if (err) throw err
+        else {
+          debug('compacted block %d', blockIndex)
+          if (cb) cb()
+        }
+      })
+    } else {
+      if (cb) cb()
     }
   }
 
@@ -136,12 +148,11 @@ module.exports = class Compaction {
     const lastCompactedBlockIndex = this.uncompactedBlockIndex
     this.uncompactedBlockIndex += 1
 
-    if (this.uncompactedBlockIndex === this.LAST_BLOCK_INDEX) {
-      if (this.unshiftedBlockIndex === -1) {
-        this.stop(lastCompactedBlockIndex)
-      } else {
-        this.stop(this.LAST_BLOCK_INDEX)
-      }
+    if (
+      this.uncompactedBlockIndex > this.LAST_BLOCK_INDEX ||
+      this.unshiftedBlockIndex === -1
+    ) {
+      this.stop(lastCompactedBlockIndex)
       return
     }
 
@@ -150,7 +161,7 @@ module.exports = class Compaction {
       if (err) return this.onDone(err)
       this.uncompactedBlockBuf = blockBuf
       this.uncompactedOffset = blockStart
-      this.uncompactedBlockHasHoles = false
+      this.uncompactedBlockChanged = false
       this.compactedBlockBuf = Buffer.alloc(this.log.blockSize)
       this.compactedOffset = blockStart
       if (this.unshiftedBlockIndex <= this.uncompactedBlockIndex) {
@@ -168,7 +179,7 @@ module.exports = class Compaction {
     this.uncompactedBlockIndex = -1
     this.uncompactedBlockBuf = null
     this.uncompactedOffset = -1
-    this.uncompactedBlockHasHoles = false
+    this.uncompactedBlockChanged = false
     this.compactedBlockBuf = null
     this.compactedOffset = -1
     this.unshiftedBlockIndex = -1
