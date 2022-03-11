@@ -124,7 +124,7 @@ tape('shift many blocks', async (t) => {
             // block 4
             [0xdd, 0xee, 0xff],
           ].flat(),
-          'log has 4 blocks and some holes'
+          'log has 5 blocks and some holes'
         )
         resolve()
       })
@@ -151,7 +151,7 @@ tape('shift many blocks', async (t) => {
             // block 3
             [0xdd, 0xee, 0xff],
           ].flat(),
-          'log has 3 blocks and no holes, except in the last block'
+          'log has 4 blocks and no holes, except in the last block'
         )
         resolve()
       })
