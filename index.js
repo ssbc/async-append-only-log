@@ -207,7 +207,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   // -1: end of log
   //  0: need a new block
   // >0: next record within block
-  function getDataNextOffset(blockBuf, offset) {
+  function getDataNextOffset(blockBuf, offset, asRaw = false) {
     const offsetInBlock = getOffsetInBlock(offset)
     const [dataBuf, recSize] = Record.read(blockBuf, offsetInBlock)
     const nextLength = Record.readDataLength(blockBuf, offsetInBlock + recSize)
@@ -221,7 +221,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     }
 
     if (isBufferZero(dataBuf)) return [nextOffset, null]
-    else return [nextOffset, codec.decode(dataBuf)]
+    else return [nextOffset, asRaw ? dataBuf : codec.decode(dataBuf)]
   }
 
   function del(offset, cb) {
