@@ -174,6 +174,6 @@ module.exports = class Compaction {
     this.unshiftedBlockIndex = -1
     this.unshiftedBlockBuf = null
     this.unshiftedOffset = -1
-    this.onDone(null, lastBlockIndex)
+    this.log.truncate(lastBlockIndex, this.onDone)
   }
 }

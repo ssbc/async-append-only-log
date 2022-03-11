@@ -384,33 +384,31 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     writeWithFSync(blockStart, blockBuf, null, cb)
   }
 
+  function truncate(lastBlockIndex, cb) {
+    if (lastBlockIndex >= latestBlockIndex) return cb()
+    const newSize = lastBlockIndex * blockSize
+    for (let i = lastBlockIndex + 1; i < latestBlockIndex; ++i) {
+      cache.delete(i)
+    }
+    truncateWithFSync(newSize, (err) => {
+      if (err) return cb(err)
+      latestBlockIndex = lastBlockIndex
+      since.set(newSize) // FIXME: smells wrong
+      cb()
+    })
+  }
+
   function compact(opts, cb) {
     if (compaction) {
       debug('compaction already in progress')
       return
     }
-    function onDone(err, newLastBlockIndex) {
+    compaction = new Compaction(self, latestBlockIndex, opts, (err) => {
       compaction = null
       if (err) return cb(err)
-      if (newLastBlockIndex === latestBlockIndex) {
-        while (waitingCompaction.length) waitingCompaction.shift()()
-        return cb()
-      }
-      // delete everything after newLastBlockIndex
-      const newSize = newLastBlockIndex * blockSize
-      debug('truncating all blocks after block #%d', newLastBlockIndex)
-      for (let i = newLastBlockIndex + 1; i < latestBlockIndex; ++i) {
-        cache.delete(i)
-      }
-      truncateWithFSync(newSize, (err) => {
-        if (err) return cb(err)
-        latestBlockIndex = newLastBlockIndex
-        since.set(newSize) // FIXME: smells wrong
-        while (waitingCompaction.length) waitingCompaction.shift()()
-        cb()
-      })
-    }
-    compaction = new Compaction(self, latestBlockIndex, opts, onDone)
+      while (waitingCompaction.length) waitingCompaction.shift()()
+      cb()
+    })
   }
 
   function close(cb) {
@@ -473,9 +471,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
     // Internals:
     filename,
+    // Internals needed by ./compaction.js:
     blockSize,
     overwrite,
-    // Internals needed for ./stream.js:
+    truncate,
+    // Internals needed by ./stream.js:
     onLoad,
     getNextBlockStart,
     getDataNextOffset,
