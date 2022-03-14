@@ -6,7 +6,7 @@ const Cache = require('hashlru')
 const RAF = require('polyraf')
 const Obv = require('obz')
 const debounce = require('lodash.debounce')
-const debug = require('debug')('async-flumelog')
+const debug = require('debug')('async-append-only-log')
 const fs = require('fs')
 const mutexify = require('mutexify')
 
@@ -171,7 +171,7 @@ module.exports = function (filename, opts) {
 
     if (dataBuf.every((x) => x === 0)) {
       const err = new Error('item has been deleted')
-      err.code = 'flumelog:deleted'
+      err.code = 'ERR_AAOL_DELETED_RECORD'
       return cb(err)
     } else cb(null, codec.decode(dataBuf))
   }
@@ -363,7 +363,7 @@ module.exports = function (filename, opts) {
   function close(cb) {
     self.onDrain(function () {
       while (self.streams.length)
-        self.streams.shift().abort(new Error('async-flumelog: closed'))
+        self.streams.shift().abort(new Error('async-append-only-log closed'))
       raf.close(cb)
     })
   }
