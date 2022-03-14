@@ -220,8 +220,8 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       nextOffset = offset + recSize
     }
 
-    if (isBufferZero(dataBuf)) return [nextOffset, null]
-    else return [nextOffset, asRaw ? dataBuf : codec.decode(dataBuf)]
+    if (isBufferZero(dataBuf)) return [nextOffset, null, recSize]
+    else return [nextOffset, asRaw ? dataBuf : codec.decode(dataBuf), recSize]
   }
 
   function del(offset, cb) {
@@ -240,6 +240,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
+  function hasNoSpaceFor(dataBuf, offsetInBlock) {
+    return offsetInBlock + Record.size(dataBuf) + EOB.SIZE > blockSize
+  }
+
   function appendSingle(data) {
     let encodedData = codec.encode(data)
     if (typeof encodedData === 'string') encodedData = Buffer.from(encodedData)
@@ -247,8 +251,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     if (Record.size(encodedData) + EOB.SIZE > blockSize)
       throw new Error('data larger than block size')
 
-    if (nextOffsetInBlock + Record.size(encodedData) + EOB.SIZE > blockSize) {
-      // doesn't fit
+    if (hasNoSpaceFor(encodedData, nextOffsetInBlock)) {
       const nextBlockBuf = Buffer.alloc(blockSize)
       latestBlockBuf = nextBlockBuf
       latestBlockIndex += 1
@@ -475,6 +478,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     blockSize,
     overwrite,
     truncate,
+    hasNoSpaceFor,
     // Internals needed by ./stream.js:
     onLoad,
     getNextBlockStart,

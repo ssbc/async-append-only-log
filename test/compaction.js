@@ -41,7 +41,7 @@ tape('delete first record, compact, stream', async (t) => {
   t.end()
 })
 
-tape('compaction not necessary on the last block, sometimes', async (t) => {
+tape('delete second record, compact, stream', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, { blockSize: 10 })
 
@@ -57,6 +57,16 @@ tape('compaction not necessary on the last block, sometimes', async (t) => {
   await run(log.onDrain)()
   t.pass('delete second record')
 
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming log')
+        t.deepEqual(ary, [buf1, null], 'all blocks')
+        resolve()
+      })
+    )
+  })
+
   const [err] = await run(log.compact)({})
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
@@ -65,7 +75,7 @@ tape('compaction not necessary on the last block, sometimes', async (t) => {
     log.stream({ offsets: false }).pipe(
       push.collect((err, ary) => {
         t.error(err, 'no error when streaming compacted log')
-        t.deepEqual(ary, [buf1, null], 'not compacted last block')
+        t.deepEqual(ary, [buf1], 'last block truncated away')
         resolve()
       })
     )
@@ -185,7 +195,7 @@ tape('compact handling last deleted record on last block', async (t) => {
   t.pass('appended records')
 
   await run(log.del)(11 + 3)
-  await run(log.del)(22+6)
+  await run(log.del)(22 + 6)
   await run(log.onDrain)()
   t.pass('deleted some records in the middle')
 
@@ -228,6 +238,80 @@ tape('compact handling last deleted record on last block', async (t) => {
             [0x88],
           ].flat(),
           'log has 3 blocks'
+        )
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
+tape('compact handling holes of different sizes', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, {
+    blockSize: 14, // fits 4 records of size 3 plus EOB of size 2
+    codec: {
+      encode: (num) => Buffer.from(num.toString(16), 'hex'),
+      decode: (buf) => parseInt(buf.toString('hex'), 16),
+    },
+  })
+
+  await run(log.append)(
+    [
+      // block 0
+      [0x11, 0x2222, 0x33], // offsets: 0, 3, 9
+      // block 1
+      [0x4444, 0x55, 0x66], // offsets: 14+0, 14+6, 14+9
+      // block 2
+      [0x77, 0x88, 0x99, 0xaa], // offsets: 28+0, 28+3, 28+6, 28+9
+    ].flat()
+  )
+  t.pass('appended records')
+
+  await run(log.del)(3)
+  await run(log.del)(14 + 0)
+  await run(log.onDrain)()
+  t.pass('deleted some records in the middle')
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.deepEqual(
+          ary,
+          [
+            // block 0
+            [0x11, null, 0x33],
+            // block 1
+            [null, 0x55, 0x66],
+            // block 2
+            [0x77, 0x88, 0x99, 0xaa],
+          ].flat(),
+          'log has 3 blocks and some holes'
+        )
+        resolve()
+      })
+    )
+  })
+
+  const [err] = await run(log.compact)({})
+  await run(log.onDrain)()
+  t.error(err, 'no error when compacting')
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(
+          ary,
+          [
+            // block 0
+            [0x11, 0x33, 0x55, 0x66],
+            // block 1
+            [0x77, 0x88, 0x99, 0xaa],
+          ].flat(),
+          'log has 2 blocks'
         )
         resolve()
       })

@@ -12,16 +12,13 @@ module.exports = class Compaction {
     this.onDone = onDone
     this.LAST_BLOCK_INDEX = lastBlockIndex
 
-    this.uncompactedBlockIndex = -1
-    this.uncompactedBlockBuf = null
-    this.uncompactedOffset = 0
-    this.uncompactedBlockChanged = false
-
-    this.compactedBlockBuf = null
-    this.compactedOffset = 0
+    this.compactBlockIndex = -1
+    this.compactBlockBuf = null
+    this.compactOffset = 0
+    this.compactBlockIdenticalToUnshifted = true
 
     this.unshiftedBlockIndex = 0
-    this.unshiftedBlockBuf = 0
+    this.unshiftedBlockBuf = null
     this.unshiftedOffset = 0
 
     this.compactNextBlock()
@@ -29,62 +26,56 @@ module.exports = class Compaction {
 
   continueCompactingBlock() {
     while (true) {
-      const blockStart = this.uncompactedBlockIndex * this.log.blockSize
-      const offsetInBlock = this.uncompactedOffset - blockStart
-      const [nextOffset, dataBuf] = this.log.getDataNextOffset(
-        this.uncompactedBlockBuf,
-        this.uncompactedOffset,
-        true
-      )
-
-      if (dataBuf === null || this.uncompactedOffset < this.unshiftedOffset) {
-        if (!this.unshiftedBlockBuf) {
-          this.loadUnshiftedBlock(() => {
-            this.continueCompactingBlock()
-          })
-          return
-        }
-        // All records have been shifted, end of log reached
-        if (this.unshiftedBlockIndex === -1) {
-          this.saveCompactedBlock((err) => {
-            if (err) throw err
-            this.stop(this.uncompactedBlockIndex)
-          })
-          return
-        }
-
-        const unshiftedDataBuf = this.getNextUnshifted()
-        if (unshiftedDataBuf === null) continue
-        this.uncompactedBlockChanged = true
-        Record.write(this.compactedBlockBuf, offsetInBlock, unshiftedDataBuf)
-        this.uncompactedOffset = nextOffset
-      } else {
-        Record.write(this.compactedBlockBuf, offsetInBlock, dataBuf)
-        this.uncompactedOffset = nextOffset
-        if (this.unshiftedOffset < nextOffset) {
-          this.unshiftedOffset = nextOffset
-        }
+      // Fetch the unshifted block, if necessary
+      if (!this.unshiftedBlockBuf) {
+        this.loadUnshiftedBlock(() => {
+          this.continueCompactingBlock()
+        })
+        return
       }
-
-      if (nextOffset === 0 || nextOffset === -1) {
+      // When all records have been shifted (thus end of log), stop compacting
+      if (this.unshiftedBlockIndex === -1) {
+        this.saveCompactedBlock((err) => {
+          if (err) throw err
+          this.stop(this.compactBlockIndex)
+        })
+        return
+      }
+      const [unshiftedDataBuf, unshiftedRecSize] = this.getUnshiftedRecord()
+      // Get a non-deleted unshifted record, if necessary
+      if (!unshiftedDataBuf) {
+        this.goToNextUnshifted()
+        continue
+      }
+      const compactBlockStart = this.compactBlockIndex * this.log.blockSize
+      const offsetInCompactBlock = this.compactOffset - compactBlockStart
+      // Proceed to compact the next block if this block is full
+      if (this.log.hasNoSpaceFor(unshiftedDataBuf, offsetInCompactBlock)) {
         this.saveCompactedBlock()
         setImmediate(() => this.compactNextBlock())
         return
       }
 
-      if (nextOffset === -1) {
-        // FIXME: unless I'm missing something, this should never happen,
-        // because the last block will not be compacted since it's still
-        // work-in-progress (see the bail out in compactNextBlock())
-        throw new Error('this should be unreachable')
+      if (
+        this.compactBlockIndex !== this.unshiftedBlockIndex ||
+        this.compactOffset !== this.unshiftedOffset
+      ) {
+        this.compactBlockIdenticalToUnshifted = false
       }
+
+      // Copy record to new compacted block
+      Record.write(this.compactBlockBuf, offsetInCompactBlock, unshiftedDataBuf)
+      this.goToNextUnshifted()
+      this.compactOffset += unshiftedRecSize
     }
   }
 
   saveCompactedBlock(cb) {
-    if (this.uncompactedBlockChanged) {
-      const blockIndex = this.uncompactedBlockIndex
-      this.log.overwrite(blockIndex, this.compactedBlockBuf, (err) => {
+    if (this.compactBlockIdenticalToUnshifted) {
+      if (cb) cb()
+    } else {
+      const blockIndex = this.compactBlockIndex
+      this.log.overwrite(blockIndex, this.compactBlockBuf, (err) => {
         if (err && cb) cb(err)
         else if (err) throw err
         else {
@@ -92,8 +83,6 @@ module.exports = class Compaction {
           if (cb) cb()
         }
       })
-    } else {
-      if (cb) cb()
     }
   }
 
@@ -106,85 +95,54 @@ module.exports = class Compaction {
     })
   }
 
-  getNextUnshifted() {
-    while (true) {
-      const [nextOffset, dataBuf] = this.log.getDataNextOffset(
-        this.unshiftedBlockBuf,
-        this.unshiftedOffset,
-        true
-      )
+  getUnshiftedRecord() {
+    const [, dataBuf, recSize] = this.log.getDataNextOffset(
+      this.unshiftedBlockBuf,
+      this.unshiftedOffset,
+      true
+    )
+    return [dataBuf, recSize]
+  }
 
-      if (dataBuf === null) {
-        if (nextOffset === -1) {
-          this.unshiftedBlockIndex = -1
-          return null
-        } else if (nextOffset === 0) {
-          this.unshiftedBlockIndex += 1
-          this.unshiftedBlockBuf = null
-          this.unshiftedOffset = this.unshiftedBlockIndex * this.log.blockSize
-          return null
-        } else {
-          this.unshiftedOffset = nextOffset
-          continue
-        }
-      } else {
-        if (nextOffset === -1) {
-          this.unshiftedBlockIndex = -1
-          return dataBuf
-        } else if (nextOffset === 0) {
-          this.unshiftedBlockIndex += 1
-          this.unshiftedBlockBuf = null
-          this.unshiftedOffset = this.unshiftedBlockIndex * this.log.blockSize
-          return dataBuf
-        } else {
-          this.unshiftedOffset = nextOffset
-          return dataBuf
-        }
-      }
+  goToNextUnshifted() {
+    let [nextOffset] = this.log.getDataNextOffset(
+      this.unshiftedBlockBuf,
+      this.unshiftedOffset,
+      true
+    )
+    if (nextOffset === -1) {
+      this.unshiftedBlockIndex = -1
+    } else if (nextOffset === 0) {
+      this.unshiftedBlockIndex += 1
+      this.unshiftedBlockBuf = null
+      this.unshiftedOffset = this.unshiftedBlockIndex * this.log.blockSize
+    } else {
+      this.unshiftedOffset = nextOffset
     }
   }
 
   compactNextBlock() {
-    const lastCompactedBlockIndex = this.uncompactedBlockIndex
-    this.uncompactedBlockIndex += 1
+    const lastCompactedBlockIndex = this.compactBlockIndex
+    this.compactBlockIndex += 1
 
     if (
-      this.uncompactedBlockIndex > this.LAST_BLOCK_INDEX ||
+      this.compactBlockIndex > this.LAST_BLOCK_INDEX ||
       this.unshiftedBlockIndex === -1
     ) {
       this.stop(lastCompactedBlockIndex)
       return
     }
 
-    const blockStart = this.uncompactedBlockIndex * this.log.blockSize
-    this.log.getBlock(blockStart, (err, blockBuf) => {
-      if (err) return this.onDone(err)
-      this.uncompactedBlockBuf = blockBuf
-      this.uncompactedOffset = blockStart
-      this.uncompactedBlockChanged = false
-      this.compactedBlockBuf = Buffer.alloc(this.log.blockSize)
-      this.compactedOffset = blockStart
-      if (this.unshiftedBlockIndex <= this.uncompactedBlockIndex) {
-        this.unshiftedBlockIndex = this.uncompactedBlockIndex
-        this.unshiftedBlockBuf = this.uncompactedBlockBuf
-        if (this.unshiftedOffset < blockStart) {
-          this.unshiftedOffset = blockStart
-        }
-      }
-      this.continueCompactingBlock()
-    })
+    const blockStart = this.compactBlockIndex * this.log.blockSize
+    this.compactBlockBuf = Buffer.alloc(this.log.blockSize)
+    this.compactBlockIdenticalToUnshifted = true
+    this.compactOffset = blockStart
+    this.continueCompactingBlock()
   }
 
   stop(lastBlockIndex) {
-    this.uncompactedBlockIndex = -1
-    this.uncompactedBlockBuf = null
-    this.uncompactedOffset = -1
-    this.uncompactedBlockChanged = false
-    this.compactedBlockBuf = null
-    this.compactedOffset = -1
-    this.unshiftedBlockIndex = -1
+    this.compactBlockBuf = null
     this.unshiftedBlockBuf = null
-    this.unshiftedOffset = -1
     this.log.truncate(lastBlockIndex, this.onDone)
   }
 }
