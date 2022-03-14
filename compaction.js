@@ -37,7 +37,7 @@ module.exports = class Compaction {
       if (this.unshiftedBlockIndex === -1) {
         this.saveCompactedBlock((err) => {
           if (err) throw err
-          this.stop(this.compactedBlockIndex)
+          this.stop()
         })
         return
       }
@@ -126,16 +126,7 @@ module.exports = class Compaction {
   }
 
   compactNextBlock() {
-    const lastCompactedBlockIndex = this.compactedBlockIndex
     this.compactedBlockIndex += 1
-
-    if (
-      this.compactedBlockIndex > this.LAST_BLOCK_INDEX ||
-      this.unshiftedBlockIndex === -1
-    ) {
-      this.stop(lastCompactedBlockIndex)
-      return
-    }
 
     const blockStart = this.compactedBlockIndex * this.log.blockSize
     this.compactedBlockBuf = Buffer.alloc(this.log.blockSize)
@@ -144,9 +135,9 @@ module.exports = class Compaction {
     this.continueCompactingBlock()
   }
 
-  stop(lastBlockIndex) {
+  stop() {
     this.compactedBlockBuf = null
     this.unshiftedBlockBuf = null
-    this.log.truncate(lastBlockIndex, this.onDone)
+    this.log.truncate(this.compactedBlockIndex, this.onDone)
   }
 }
