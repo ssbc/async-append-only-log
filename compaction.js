@@ -12,10 +12,10 @@ module.exports = class Compaction {
     this.onDone = onDone
     this.LAST_BLOCK_INDEX = lastBlockIndex
 
-    this.compactBlockIndex = -1
-    this.compactBlockBuf = null
-    this.compactOffset = 0
-    this.compactBlockIdenticalToUnshifted = true
+    this.compactedBlockIndex = -1
+    this.compactedBlockBuf = null
+    this.compactedOffset = 0
+    this.compactedBlockIdenticalToUnshifted = true
 
     this.unshiftedBlockIndex = 0
     this.unshiftedBlockBuf = null
@@ -37,7 +37,7 @@ module.exports = class Compaction {
       if (this.unshiftedBlockIndex === -1) {
         this.saveCompactedBlock((err) => {
           if (err) throw err
-          this.stop(this.compactBlockIndex)
+          this.stop(this.compactedBlockIndex)
         })
         return
       }
@@ -47,35 +47,39 @@ module.exports = class Compaction {
         this.goToNextUnshifted()
         continue
       }
-      const compactBlockStart = this.compactBlockIndex * this.log.blockSize
-      const offsetInCompactBlock = this.compactOffset - compactBlockStart
+      const compactedBlockStart = this.compactedBlockIndex * this.log.blockSize
+      const offsetInCompactedBlock = this.compactedOffset - compactedBlockStart
       // Proceed to compact the next block if this block is full
-      if (this.log.hasNoSpaceFor(unshiftedDataBuf, offsetInCompactBlock)) {
+      if (this.log.hasNoSpaceFor(unshiftedDataBuf, offsetInCompactedBlock)) {
         this.saveCompactedBlock()
         setImmediate(() => this.compactNextBlock())
         return
       }
 
       if (
-        this.compactBlockIndex !== this.unshiftedBlockIndex ||
-        this.compactOffset !== this.unshiftedOffset
+        this.compactedBlockIndex !== this.unshiftedBlockIndex ||
+        this.compactedOffset !== this.unshiftedOffset
       ) {
-        this.compactBlockIdenticalToUnshifted = false
+        this.compactedBlockIdenticalToUnshifted = false
       }
 
       // Copy record to new compacted block
-      Record.write(this.compactBlockBuf, offsetInCompactBlock, unshiftedDataBuf)
+      Record.write(
+        this.compactedBlockBuf,
+        offsetInCompactedBlock,
+        unshiftedDataBuf
+      )
       this.goToNextUnshifted()
-      this.compactOffset += unshiftedRecSize
+      this.compactedOffset += unshiftedRecSize
     }
   }
 
   saveCompactedBlock(cb) {
-    if (this.compactBlockIdenticalToUnshifted) {
+    if (this.compactedBlockIdenticalToUnshifted) {
       if (cb) cb()
     } else {
-      const blockIndex = this.compactBlockIndex
-      this.log.overwrite(blockIndex, this.compactBlockBuf, (err) => {
+      const blockIndex = this.compactedBlockIndex
+      this.log.overwrite(blockIndex, this.compactedBlockBuf, (err) => {
         if (err && cb) cb(err)
         else if (err) throw err
         else {
@@ -122,26 +126,26 @@ module.exports = class Compaction {
   }
 
   compactNextBlock() {
-    const lastCompactedBlockIndex = this.compactBlockIndex
-    this.compactBlockIndex += 1
+    const lastCompactedBlockIndex = this.compactedBlockIndex
+    this.compactedBlockIndex += 1
 
     if (
-      this.compactBlockIndex > this.LAST_BLOCK_INDEX ||
+      this.compactedBlockIndex > this.LAST_BLOCK_INDEX ||
       this.unshiftedBlockIndex === -1
     ) {
       this.stop(lastCompactedBlockIndex)
       return
     }
 
-    const blockStart = this.compactBlockIndex * this.log.blockSize
-    this.compactBlockBuf = Buffer.alloc(this.log.blockSize)
-    this.compactBlockIdenticalToUnshifted = true
-    this.compactOffset = blockStart
+    const blockStart = this.compactedBlockIndex * this.log.blockSize
+    this.compactedBlockBuf = Buffer.alloc(this.log.blockSize)
+    this.compactedBlockIdenticalToUnshifted = true
+    this.compactedOffset = blockStart
     this.continueCompactingBlock()
   }
 
   stop(lastBlockIndex) {
-    this.compactBlockBuf = null
+    this.compactedBlockBuf = null
     this.unshiftedBlockBuf = null
     this.log.truncate(lastBlockIndex, this.onDone)
   }
