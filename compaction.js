@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-only
 
-const debug = require('debug')('async-flumelog')
+const debug = require('debug')('async-append-only-log')
 const Record = require('./record')
 
 module.exports = class Compaction {
