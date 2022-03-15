@@ -36,7 +36,7 @@ module.exports = class Compaction {
       // When all records have been shifted (thus end of log), stop compacting
       if (this.unshiftedBlockIndex === -1) {
         this.saveCompactedBlock((err) => {
-          if (err) throw err
+          if (err) return this.onDone(err)
           this.stop()
         })
         return
@@ -81,7 +81,7 @@ module.exports = class Compaction {
       const blockIndex = this.compactedBlockIndex
       this.log.overwrite(blockIndex, this.compactedBlockBuf, (err) => {
         if (err && cb) cb(err)
-        else if (err) throw err
+        else if (err) return this.onDone(err)
         else {
           debug('compacted block %d', blockIndex)
           if (cb) cb()
