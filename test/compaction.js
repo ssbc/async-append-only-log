@@ -25,7 +25,7 @@ tape('delete first record, compact, stream', async (t) => {
   await run(log.onDrain)()
   t.pass('delete first record')
 
-  const [err] = await run(log.compact)({})
+  const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
 
@@ -69,7 +69,7 @@ tape('delete second record, compact, stream', async (t) => {
     )
   })
 
-  const [err] = await run(log.compact)({})
+  const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
 
@@ -143,7 +143,7 @@ tape('shift many blocks', async (t) => {
     )
   })
 
-  const [err] = await run(log.compact)({})
+  const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
 
@@ -221,7 +221,7 @@ tape('compact handling last deleted record on last block', async (t) => {
     )
   })
 
-  const [err] = await run(log.compact)({})
+  const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
 
@@ -297,7 +297,7 @@ tape('compact handling holes of different sizes', async (t) => {
     )
   })
 
-  const [err] = await run(log.compact)({})
+  const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
 
@@ -493,7 +493,7 @@ tape('append during compaction is postponed', async (t) => {
 
   let appendDone = false
   let compactDone = false
-  log.compact({}, (err) => {
+  log.compact((err) => {
     t.error(err, 'no error when compacting')
     t.false(appendDone, 'compact was done before append')
     compactDone = true
@@ -538,7 +538,7 @@ tape('appendTransaction during compaction is postponed', async (t) => {
 
   let appendTransactionDone = false
   let compactDone = false
-  log.compact({}, (err) => {
+  log.compact((err) => {
     t.error(err, 'no error when compacting')
     t.false(appendTransactionDone, 'compact was done before appendTransaction')
     compactDone = true
@@ -580,7 +580,7 @@ tape('del during compaction is forbidden', async (t) => {
   await run(log.onDrain)()
   t.pass('delete first record')
 
-  log.compact({}, (err) => {
+  log.compact((err) => {
     t.error(err, 'no error when compacting')
   })
   const [err, offset3] = await run(log.del)(10)

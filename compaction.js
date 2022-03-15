@@ -108,8 +108,7 @@ class PersistentState {
  * - Once all blocks have been compacted, delete the state file
  */
 class Compaction {
-  constructor(log, lastBlockIndex, opts, onDone) {
-    // TODO opts?
+  constructor(log, lastBlockIndex, onDone) {
     this.log = log
     this.persistentState = new PersistentState(log.filename, log.blockSize)
     this.onDone = onDone

@@ -60,7 +60,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
   onLoad(function maybeResumeCompaction() {
     if (Compaction.stateFileExists(filename)) {
-      compact({}, function onCompactDone(err) {
+      compact(function onCompactDone(err) {
         if (err) throw err
       })
     }
@@ -423,12 +423,12 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
-  function compact(opts, cb) {
+  function compact(cb) {
     if (compaction) {
       debug('compaction already in progress')
       return
     }
-    compaction = new Compaction(self, latestBlockIndex, opts, (err) => {
+    compaction = new Compaction(self, latestBlockIndex, (err) => {
       compaction = null
       if (err) return cb(err)
       while (waitingCompaction.length) waitingCompaction.shift()()
