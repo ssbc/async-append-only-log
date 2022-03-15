@@ -473,3 +473,132 @@ tape('recovers from crash just after persisting block', async (t) => {
   await run(log.close)()
   t.end()
 })
+
+tape('append during compaction is postponed', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, { blockSize: 10 })
+
+  const buf1 = Buffer.from('first')
+  const buf2 = Buffer.from('second')
+  const buf3 = Buffer.from('third')
+
+  const [, offset1] = await run(log.append)(buf1)
+  const [, offset2] = await run(log.append)(buf2)
+  await run(log.onDrain)()
+  t.pass('append two records')
+
+  await run(log.del)(offset1)
+  await run(log.onDrain)()
+  t.pass('delete first record')
+
+  let appendDone = false
+  let compactDone = false
+  log.compact({}, (err) => {
+    t.error(err, 'no error when compacting')
+    t.false(appendDone, 'compact was done before append')
+    compactDone = true
+  })
+  const [err, offset3] = await run(log.append)(buf3)
+  appendDone = true
+  t.error(err, 'no error when appending')
+  t.equal(offset3, 10, 'append wrote "third" on the 2nd block')
+  t.true(compactDone, 'compaction was done by the time append is done')
+  await run(log.onDrain)()
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(ary, [buf2, buf3], 'only 2nd and 3rd records exist')
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
+tape('appendTransaction during compaction is postponed', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, { blockSize: 10 })
+
+  const buf1 = Buffer.from('first')
+  const buf2 = Buffer.from('second')
+  const buf3 = Buffer.from('third')
+
+  const [, offset1] = await run(log.append)(buf1)
+  const [, offset2] = await run(log.append)(buf2)
+  await run(log.onDrain)()
+  t.pass('append two records')
+
+  await run(log.del)(offset1)
+  await run(log.onDrain)()
+  t.pass('delete first record')
+
+  let appendTransactionDone = false
+  let compactDone = false
+  log.compact({}, (err) => {
+    t.error(err, 'no error when compacting')
+    t.false(appendTransactionDone, 'compact was done before appendTransaction')
+    compactDone = true
+  })
+  const [err, offset3] = await run(log.appendTransaction)([buf3])
+  appendTransactionDone = true
+  t.error(err, 'no error when appending')
+  t.deepEquals(offset3, [10], 'appendTransaction wrote "third" on 2nd block')
+  t.true(compactDone, 'compaction was done before appendTransaction done')
+  await run(log.onDrain)()
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(ary, [buf2, buf3], 'only 2nd and 3rd records exist')
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
+tape('del during compaction is forbidden', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, { blockSize: 10 })
+
+  const buf1 = Buffer.from('first')
+  const buf2 = Buffer.from('second')
+
+  const [, offset1] = await run(log.append)(buf1)
+  const [, offset2] = await run(log.append)(buf2)
+  await run(log.onDrain)()
+  t.pass('append two records')
+
+  await run(log.del)(offset1)
+  await run(log.onDrain)()
+  t.pass('delete first record')
+
+  log.compact({}, (err) => {
+    t.error(err, 'no error when compacting')
+  })
+  const [err, offset3] = await run(log.del)(10)
+  t.ok(err, 'del is forbidden')
+  t.match(err.message, /Cannot delete/)
+  t.notOk(offset3)
+  await run(log.onDrain)()
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(ary, [buf2], 'only 2nd record exists')
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})

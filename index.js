@@ -233,6 +233,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function del(offset, cb) {
+    if (compaction) {
+      cb(new Error('Cannot delete while compaction is in progress'))
+      return
+    }
     if (blocksToBeWritten.has(getBlockIndex(offset))) {
       onDrain(function delAfterDrained() {
         del(offset, cb)
@@ -281,6 +285,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function append(data, cb) {
+    if (compaction) {
+      waitingCompaction.push(() => append(data, cb))
+      return
+    }
+
     if (Array.isArray(data)) {
       let offset = 0
       for (let i = 0, length = data.length; i < length; ++i)
@@ -291,10 +300,15 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function appendTransaction(dataArray, cb) {
-    if (!Array.isArray(dataArray))
+    if (!Array.isArray(dataArray)) {
       return cb(
         new Error('appendTransaction expects first argument to be an array')
       )
+    }
+    if (compaction) {
+      waitingCompaction.push(() => appendTransaction(dataArray, cb))
+      return
+    }
 
     let size = 0
     const encodedDataArray = dataArray.map((data) => {
