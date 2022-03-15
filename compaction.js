@@ -11,9 +11,9 @@ const Record = require('./record')
 /**
  * This file has state describing the continuation of the compaction algorithm.
  *
- * - bytes 0 and 1: UInt32LE for the blockIndex to-be-compacted
- * - bytes 1 and 2: UInt32LE for the 1st unshifted record's offset
- * - bytes 3 until 3+blockSize: blockBuf containing the 1st unshifted record
+ * - bytes 0..3: UInt32LE for the blockIndex to-be-compacted
+ * - bytes 4..7: UInt32LE for the 1st unshifted record's offset
+ * - bytes 8..(8+blockSize): blockBuf containing the 1st unshifted record
  */
 class PersistentState {
   constructor(logFilename, blockSize) {
@@ -42,13 +42,13 @@ class PersistentState {
         }
         cb(null, state)
       } else {
-        const stateFileSize = 2 + 2 + this.blockSize
+        const stateFileSize = 4 + 4 + this.blockSize
         this.raf.read(0, stateFileSize, (err, buf) => {
           if (err) return cb(err)
           const state = {
-            compactedBlockIndex: buf.readUInt16LE(0),
-            unshiftedOffset: buf.readUInt16LE(2),
-            unshiftedBlockBuf: buf.slice(4),
+            compactedBlockIndex: buf.readUInt32LE(0),
+            unshiftedOffset: buf.readUInt32LE(4),
+            unshiftedBlockBuf: buf.slice(8),
             initial: false,
           }
           cb(null, state)
@@ -58,10 +58,10 @@ class PersistentState {
   }
 
   save(state, cb) {
-    const buf = Buffer.alloc(4)
-    buf.writeUInt16LE(state.compactedBlockIndex, 0)
-    buf.writeUInt16LE(state.unshiftedOffset, 2)
-    state.unshiftedBlockBuf.copy(buf, 4)
+    const buf = Buffer.alloc(4 + 4 + this.blockSize)
+    buf.writeUInt32LE(state.compactedBlockIndex, 0)
+    buf.writeUInt32LE(state.unshiftedOffset, 4)
+    state.unshiftedBlockBuf.copy(buf, 8)
     this.writeLock((unlock) => {
       this.raf.write(0, buf, (err) => {
         if (err) return unlock(cb, err)
