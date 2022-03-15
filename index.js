@@ -6,6 +6,7 @@ const Cache = require('hashlru')
 const RAF = require('polyraf')
 const Obv = require('obz')
 const debounce = require('lodash.debounce')
+const isBufferZero = require('is-buffer-zero')
 const debug = require('debug')('async-append-only-log')
 const fs = require('fs')
 const mutexify = require('mutexify')
@@ -169,7 +170,7 @@ module.exports = function (filename, opts) {
   function getData(blockBuf, offsetInBlock, cb) {
     const [dataBuf] = Record.read(blockBuf, offsetInBlock)
 
-    if (dataBuf.every((x) => x === 0)) {
+    if (isBufferZero(dataBuf)) {
       const err = new Error('item has been deleted')
       err.code = 'ERR_AAOL_DELETED_RECORD'
       return cb(err)
@@ -204,7 +205,7 @@ module.exports = function (filename, opts) {
       nextOffset = offset + recSize
     }
 
-    if (dataBuf.every((x) => x === 0)) return [nextOffset, null]
+    if (isBufferZero(dataBuf)) return [nextOffset, null]
     else return [nextOffset, codec.decode(dataBuf)]
   }
 
