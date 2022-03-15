@@ -86,7 +86,28 @@ class PersistentState {
   }
 }
 
-module.exports = class Compaction {
+/**
+ * Compaction is the process of removing deleted records from the log by
+ * rewriting blocks in the log *in situ*, moving ("shifting") subsequent records
+ * to earlier slots, to fill the spaces left by the deleted records.
+ *
+ * The compaction algorithm is, at a high level:
+ * - Keep track of some state, comprised of:
+ *   - compactedBlockIndex: blockIndex of the current block being compacted.
+ *     all blocks before this have already been compacted. This state always
+ *     increases, never decreases.
+ *   - unshiftedOffset: offset of the first unshifted record in the log, that
+ *     is, the first record that has not been shifted to earlier slots. This
+ *     offset is greater or equal to the compacted block's start offset, and
+ *     may be either in the same block as the compacted block, or even in a much
+ *     later block. This state always increases, never decreases.
+ *   - unshiftedBlockBuf: the block containing the first unshifted record
+ * - Save the state to disk
+ * - Compact one block at a time, in increasing order of blockIndex
+ * - When a block is compacted, the state file is updated
+ * - Once all blocks have been compacted, delete the state file
+ */
+class Compaction {
   constructor(log, lastBlockIndex, opts, onDone) {
     // TODO opts?
     this.log = log
@@ -274,3 +295,5 @@ module.exports = class Compaction {
     })
   }
 }
+
+module.exports = Compaction
