@@ -426,6 +426,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   function compact(cb) {
     if (compaction) {
       debug('compaction already in progress')
+      waitingCompaction.push(cb)
       return
     }
     compaction = new Compaction(self, latestBlockIndex, (err) => {

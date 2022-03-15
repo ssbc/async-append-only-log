@@ -602,3 +602,49 @@ tape('del during compaction is forbidden', async (t) => {
   await run(log.close)()
   t.end()
 })
+
+tape('there can only be one compact at a time', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, { blockSize: 10 })
+
+  const buf1 = Buffer.from('first')
+  const buf2 = Buffer.from('second')
+
+  const [, offset1] = await run(log.append)(buf1)
+  const [, offset2] = await run(log.append)(buf2)
+  await run(log.onDrain)()
+  t.pass('append two records')
+
+  await run(log.del)(offset1)
+  await run(log.onDrain)()
+  t.pass('delete first record')
+
+  let compact1Done = false
+  let compact2Done = false
+  log.compact((err) => {
+    t.error(err, 'no error when compacting')
+    t.true(compact2Done, '2nd compact cb has been called already')
+    compact1Done = true
+  })
+  log.compact((err) => {
+    t.error(err, 'no error when compacting')
+    t.false(compact1Done, '1st compact cb has not been called yet')
+    compact2Done = true
+  })
+  await run(log.onDrain)()
+  t.true(compact1Done, 'compact 1 done')
+  t.true(compact2Done, 'compact 2 done')
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(ary, [buf2], 'only second record exists')
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
