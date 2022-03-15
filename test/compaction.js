@@ -9,6 +9,11 @@ const run = require('promisify-tuple')
 const timer = require('util').promisify(setTimeout)
 const Log = require('../')
 
+const hexCodec = {
+  encode: (num) => Buffer.from(num.toString(16), 'hex'),
+  decode: (buf) => parseInt(buf.toString('hex'), 16),
+}
+
 tape('delete first record, compact, stream', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, { blockSize: 10 })
@@ -91,10 +96,7 @@ tape('shift many blocks', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, {
     blockSize: 11, // fits 3 records of size 3 plus EOB of size 2
-    codec: {
-      encode: (num) => Buffer.from(num.toString(16), 'hex'),
-      decode: (buf) => parseInt(buf.toString('hex'), 16),
-    },
+    codec: hexCodec,
   })
 
   await run(log.append)(
@@ -178,10 +180,7 @@ tape('compact handling last deleted record on last block', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, {
     blockSize: 11, // fits 3 records of size 3 plus EOB of size 2
-    codec: {
-      encode: (num) => Buffer.from(num.toString(16), 'hex'),
-      decode: (buf) => parseInt(buf.toString('hex'), 16),
-    },
+    codec: hexCodec,
   })
 
   await run(log.append)(
@@ -254,10 +253,7 @@ tape('compact handling holes of different sizes', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, {
     blockSize: 14, // fits 4 records of size 3 plus EOB of size 2
-    codec: {
-      encode: (num) => Buffer.from(num.toString(16), 'hex'),
-      decode: (buf) => parseInt(buf.toString('hex'), 16),
-    },
+    codec: hexCodec,
   })
 
   await run(log.append)(
@@ -327,13 +323,7 @@ tape('compact handling holes of different sizes', async (t) => {
 tape('recovers from crash just after persisting state', async (t) => {
   t.timeoutAfter(6000)
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
-  let log = Log(file, {
-    blockSize: 9,
-    codec: {
-      encode: (num) => Buffer.from(num.toString(16), 'hex'),
-      decode: (buf) => parseInt(buf.toString('hex'), 16),
-    },
-  })
+  let log = Log(file, { blockSize: 9, codec: hexCodec })
   t.pass('suppose the log has blockSize 9')
   t.pass('suppose we had blocks: [null, 0x22] and [0x33, 0x44]')
 
@@ -365,13 +355,7 @@ tape('recovers from crash just after persisting state', async (t) => {
   )
   t.pass('suppose compaction file: blockIndex 1, unshifted 12, [0x33, 0x44]')
 
-  log = Log(file, {
-    blockSize: 9,
-    codec: {
-      encode: (num) => Buffer.from(num.toString(16), 'hex'),
-      decode: (buf) => parseInt(buf.toString('hex'), 16),
-    },
-  })
+  log = Log(file, { blockSize: 9, codec: hexCodec })
   t.pass('start log, compaction should autostart')
 
   await timer(1000)
@@ -402,13 +386,7 @@ tape('recovers from crash just after persisting state', async (t) => {
 tape('recovers from crash just after persisting block', async (t) => {
   t.timeoutAfter(6000)
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
-  let log = Log(file, {
-    blockSize: 9,
-    codec: {
-      encode: (num) => Buffer.from(num.toString(16), 'hex'),
-      decode: (buf) => parseInt(buf.toString('hex'), 16),
-    },
-  })
+  let log = Log(file, { blockSize: 9, codec: hexCodec })
   t.pass('suppose the log has blockSize 9')
   t.pass('suppose we had blocks: [null, 0x22] and [0x33, 0x44]')
 
@@ -440,13 +418,7 @@ tape('recovers from crash just after persisting block', async (t) => {
   )
   t.pass('suppose compaction file: blockIndex 0, unshifted 0, [null, 0x22]')
 
-  log = Log(file, {
-    blockSize: 9,
-    codec: {
-      encode: (num) => Buffer.from(num.toString(16), 'hex'),
-      decode: (buf) => parseInt(buf.toString('hex'), 16),
-    },
-  })
+  log = Log(file, { blockSize: 9, codec: hexCodec })
   t.pass('start log, compaction should autostart')
 
   await timer(1000)
