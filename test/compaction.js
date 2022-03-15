@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Unlicense
 
 const tape = require('tape')
+const fs = require('fs')
 const push = require('push-stream')
 const run = require('promisify-tuple')
+const timer = require('util').promisify(setTimeout)
 const Log = require('../')
 
 tape('delete first record, compact, stream', async (t) => {
@@ -310,6 +312,156 @@ tape('compact handling holes of different sizes', async (t) => {
             [0x11, 0x33, 0x55, 0x66],
             // block 1
             [0x77, 0x88, 0x99, 0xaa],
+          ].flat(),
+          'log has 2 blocks'
+        )
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
+tape('recovers from crash just after persisting state', async (t) => {
+  t.timeoutAfter(6000)
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  let log = Log(file, {
+    blockSize: 9,
+    codec: {
+      encode: (num) => Buffer.from(num.toString(16), 'hex'),
+      decode: (buf) => parseInt(buf.toString('hex'), 16),
+    },
+  })
+  t.pass('suppose the log has blockSize 9')
+  t.pass('suppose we had blocks: [null, 0x22] and [0x33, 0x44]')
+
+  await run(log.append)(
+    [
+      // block 0
+      [0x22, 0x33], // offsets: 0, 3
+      // block 1
+      [0x33, 0x44], // offsets: 9+0, 9+3
+    ].flat()
+  )
+  await run(log.close)()
+  t.pass('suppose compaction was in progress: [0x22, 0x33] and [0x33, 0x44]')
+
+  const compactingBlockIndex = [1, 0] // uint16LE
+  const unshiftedOffset = [9 + 3 + 1, 0] // uint32LE
+  const unshiftedBlock = [
+    [1, 0, 0x33],
+    [1, 0, 0x44],
+    [0, 0, 0],
+  ].flat()
+  await fs.promises.writeFile(
+    file + '.compaction',
+    Buffer.from([
+      ...compactingBlockIndex,
+      ...unshiftedOffset,
+      ...unshiftedBlock,
+    ])
+  )
+  t.pass('suppose compaction file: blockIndex 1, unshifted 12, [0x33, 0x44]')
+
+  log = Log(file, {
+    blockSize: 9,
+    codec: {
+      encode: (num) => Buffer.from(num.toString(16), 'hex'),
+      decode: (buf) => parseInt(buf.toString('hex'), 16),
+    },
+  })
+  t.pass('start log, compaction should autostart')
+
+  await timer(1000)
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(
+          ary,
+          [
+            // block 0
+            [0x22, 0x33],
+            // block 1
+            [0x44],
+          ].flat(),
+          'log has 2 blocks'
+        )
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
+tape('recovers from crash just after persisting block', async (t) => {
+  t.timeoutAfter(6000)
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  let log = Log(file, {
+    blockSize: 9,
+    codec: {
+      encode: (num) => Buffer.from(num.toString(16), 'hex'),
+      decode: (buf) => parseInt(buf.toString('hex'), 16),
+    },
+  })
+  t.pass('suppose the log has blockSize 9')
+  t.pass('suppose we had blocks: [null, 0x22] and [0x33, 0x44]')
+
+  await run(log.append)(
+    [
+      // block 0
+      [0x22, 0x33], // offsets: 0, 3
+      // block 1
+      [0x33, 0x44], // offsets: 9+0, 9+3
+    ].flat()
+  )
+  await run(log.close)()
+  t.pass('suppose compaction was in progress: [0x22, 0x33] and [0x33, 0x44]')
+
+  const compactingBlockIndex = [0, 0] // uint16LE
+  const unshiftedOffset = [0 + 1, 0] // uint32LE
+  const unshiftedBlock = [
+    [2, 0, 0, 0], // deleted. used to be [2, 0, 0x11, 0x11]
+    [1, 0, 0x22],
+    [0, 0],
+  ].flat()
+  await fs.promises.writeFile(
+    file + '.compaction',
+    Buffer.from([
+      ...compactingBlockIndex,
+      ...unshiftedOffset,
+      ...unshiftedBlock,
+    ])
+  )
+  t.pass('suppose compaction file: blockIndex 0, unshifted 0, [null, 0x22]')
+
+  log = Log(file, {
+    blockSize: 9,
+    codec: {
+      encode: (num) => Buffer.from(num.toString(16), 'hex'),
+      decode: (buf) => parseInt(buf.toString('hex'), 16),
+    },
+  })
+  t.pass('start log, compaction should autostart')
+
+  await timer(1000)
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(
+          ary,
+          [
+            // block 0
+            [0x22, 0x33],
+            // block 1
+            [0x44],
           ].flat(),
           'log has 2 blocks'
         )

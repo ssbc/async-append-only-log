@@ -58,6 +58,14 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let compaction = null
   const waitingCompaction = []
 
+  onLoad(function maybeResumeCompaction() {
+    if (Compaction.stateFileExists(filename)) {
+      compact({}, function onCompactDone(err) {
+        if (err) throw err
+      })
+    }
+  })()
+
   raf.stat(function onRAFStatDone(err, stat) {
     if (err) debug('failed to stat ' + filename, err)
 
@@ -472,9 +480,8 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       return stream
     },
 
-    // Internals:
-    filename,
     // Internals needed by ./compaction.js:
+    filename,
     blockSize,
     overwrite,
     truncate,

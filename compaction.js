@@ -2,13 +2,95 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-only
 
+const RAF = require('polyraf')
+const fs = require('fs')
+const mutexify = require('mutexify')
 const debug = require('debug')('async-append-only-log')
 const Record = require('./record')
+
+/**
+ * This file has state describing the continuation of the compaction algorithm.
+ *
+ * - bytes 0 and 1: UInt32LE for the blockIndex to-be-compacted
+ * - bytes 1 and 2: UInt32LE for the 1st unshifted record's offset
+ * - bytes 3 until 3+blockSize: blockBuf containing the 1st unshifted record
+ */
+class PersistentState {
+  constructor(logFilename, blockSize) {
+    this.raf = RAF(PersistentState.filename(logFilename))
+    this.blockSize = blockSize
+    this.writeLock = mutexify()
+  }
+
+  static filename(logFilename) {
+    return logFilename + '.compaction'
+  }
+
+  static exists(logFilename) {
+    return fs.existsSync(PersistentState.filename(logFilename))
+  }
+
+  load(cb) {
+    this.raf.stat((err, stat) => {
+      const fileSize = !err && stat ? stat.size : -1
+      if (fileSize <= 0) {
+        const state = {
+          compactedBlockIndex: 0,
+          unshiftedOffset: 0,
+          unshiftedBlockBuffer: null,
+          initial: true,
+        }
+        cb(null, state)
+      } else {
+        const stateFileSize = 2 + 2 + this.blockSize
+        this.raf.read(0, stateFileSize, (err, buf) => {
+          if (err) return cb(err)
+          const state = {
+            compactedBlockIndex: buf.readUInt16LE(0),
+            unshiftedOffset: buf.readUInt16LE(2) - 1,
+            unshiftedBlockBuf: buf.slice(4),
+            initial: false,
+          }
+          cb(null, state)
+        })
+      }
+    })
+  }
+
+  save(state, cb) {
+    const buf = Buffer.alloc(4)
+    buf.writeUInt16LE(state.compactedBlockIndex, 0)
+    buf.writeUInt16LE(state.unshiftedOffset + 1, 2) // FIXME: could offset be -1?
+    state.unshiftedBlockBuf.copy(buf, 4)
+    this.writeLock((unlock) => {
+      this.raf.write(0, buf, (err) => {
+        if (err) return unlock(cb, err)
+        if (this.raf.fd) {
+          fs.fsync(this.raf.fd, (err) => {
+            if (err) unlock(cb, err)
+            else unlock(cb, null, state)
+          })
+        } else unlock(cb, null, state)
+      })
+    })
+  }
+
+  delete(cb) {
+    this.raf.close((err) => {
+      if (err) return cb(err)
+      fs.unlink(this.raf.filename, (err) => {
+        if (err) return cb(err)
+        else cb()
+      })
+    })
+  }
+}
 
 module.exports = class Compaction {
   constructor(log, lastBlockIndex, opts, onDone) {
     // TODO opts?
     this.log = log
+    this.persistentState = new PersistentState(log.filename, log.blockSize)
     this.onDone = onDone
     this.LAST_BLOCK_INDEX = lastBlockIndex
 
@@ -21,7 +103,53 @@ module.exports = class Compaction {
     this.unshiftedBlockBuf = null
     this.unshiftedOffset = 0
 
-    this.compactNextBlock()
+    this.loadPersistentState((err) => {
+      if (err) return this.onDone(err)
+      this.compactedBlockIndex -= 1 // because it'll be incremented very soon
+      this.compactNextBlock()
+    })
+  }
+
+  static stateFileExists(logFilename) {
+    return PersistentState.exists(logFilename)
+  }
+
+  loadPersistentState(cb) {
+    this.persistentState.load((err, state) => {
+      if (err) return cb(err)
+      this.compactedBlockIndex = state.compactedBlockIndex
+      this.unshiftedOffset = state.unshiftedOffset
+      this.unshiftedBlockBuf = state.unshiftedBlockBuf
+      this.unshiftedBlockIndex = Math.floor(
+        state.unshiftedOffset / this.log.blockSize
+      )
+      if (state.initial) {
+        this.savePersistentState(cb)
+      } else {
+        cb()
+      }
+    })
+  }
+
+  savePersistentState(cb) {
+    if (!this.unshiftedBlockBuf) {
+      this.loadUnshiftedBlock(() => {
+        saveIt.call(this)
+      })
+    } else {
+      saveIt.call(this)
+    }
+
+    function saveIt() {
+      this.persistentState.save(
+        {
+          compactedBlockIndex: this.compactedBlockIndex,
+          unshiftedOffset: this.unshiftedOffset,
+          unshiftedBlockBuf: this.unshiftedBlockBuf,
+        },
+        cb
+      )
+    }
   }
 
   continueCompactingBlock() {
@@ -128,16 +256,21 @@ module.exports = class Compaction {
   compactNextBlock() {
     this.compactedBlockIndex += 1
 
-    const blockStart = this.compactedBlockIndex * this.log.blockSize
     this.compactedBlockBuf = Buffer.alloc(this.log.blockSize)
+    this.compactedOffset = this.compactedBlockIndex * this.log.blockSize
     this.compactedBlockIdenticalToUnshifted = true
-    this.compactedOffset = blockStart
-    this.continueCompactingBlock()
+    this.savePersistentState((err) => {
+      if (err) return this.onDone(err)
+      this.continueCompactingBlock()
+    })
   }
 
   stop() {
     this.compactedBlockBuf = null
     this.unshiftedBlockBuf = null
-    this.log.truncate(this.compactedBlockIndex, this.onDone)
+    this.persistentState.delete((err) => {
+      if (err) return this.onDone(err)
+      this.log.truncate(this.compactedBlockIndex, this.onDone)
+    })
   }
 }
