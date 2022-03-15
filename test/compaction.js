@@ -349,7 +349,7 @@ tape('recovers from crash just after persisting state', async (t) => {
   t.pass('suppose compaction was in progress: [0x22, 0x33] and [0x33, 0x44]')
 
   const compactingBlockIndex = [1, 0] // uint16LE
-  const unshiftedOffset = [9 + 3 + 1, 0] // uint32LE
+  const unshiftedOffset = [9 + 3, 0] // uint32LE
   const unshiftedBlock = [
     [1, 0, 0x33],
     [1, 0, 0x44],
@@ -424,7 +424,7 @@ tape('recovers from crash just after persisting block', async (t) => {
   t.pass('suppose compaction was in progress: [0x22, 0x33] and [0x33, 0x44]')
 
   const compactingBlockIndex = [0, 0] // uint16LE
-  const unshiftedOffset = [0 + 1, 0] // uint32LE
+  const unshiftedOffset = [0, 0] // uint32LE
   const unshiftedBlock = [
     [2, 0, 0, 0], // deleted. used to be [2, 0, 0x11, 0x11]
     [1, 0, 0x22],

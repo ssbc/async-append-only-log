@@ -47,7 +47,7 @@ class PersistentState {
           if (err) return cb(err)
           const state = {
             compactedBlockIndex: buf.readUInt16LE(0),
-            unshiftedOffset: buf.readUInt16LE(2) - 1,
+            unshiftedOffset: buf.readUInt16LE(2),
             unshiftedBlockBuf: buf.slice(4),
             initial: false,
           }
@@ -60,7 +60,7 @@ class PersistentState {
   save(state, cb) {
     const buf = Buffer.alloc(4)
     buf.writeUInt16LE(state.compactedBlockIndex, 0)
-    buf.writeUInt16LE(state.unshiftedOffset + 1, 2) // FIXME: could offset be -1?
+    buf.writeUInt16LE(state.unshiftedOffset, 2)
     state.unshiftedBlockBuf.copy(buf, 4)
     this.writeLock((unlock) => {
       this.raf.write(0, buf, (err) => {
