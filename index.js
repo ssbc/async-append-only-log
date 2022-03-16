@@ -429,7 +429,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       waitingCompaction.push(cb)
       return
     }
-    compaction = new Compaction(self, latestBlockIndex, (err) => {
+    compaction = new Compaction(self, (err) => {
       compaction = null
       if (err) return cb(err)
       while (waitingCompaction.length) waitingCompaction.shift()()
