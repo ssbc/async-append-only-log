@@ -354,6 +354,7 @@ tape('recovers from crash just after persisting state', async (t) => {
     ])
   )
   t.pass('suppose compaction file: blockIndex 1, unshifted 12, [0x33, 0x44]')
+  t.true(fs.existsSync(file + '.compaction'), 'compaction file exists')
 
   log = Log(file, { blockSize: 9, codec: hexCodec })
   t.pass('start log, compaction should autostart')
@@ -378,6 +379,8 @@ tape('recovers from crash just after persisting state', async (t) => {
       })
     )
   })
+
+  t.false(fs.existsSync(file + '.compaction'), 'compaction file is autodeleted')
 
   await run(log.close)()
   t.end()
