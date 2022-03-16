@@ -80,7 +80,6 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       since.set(-1)
       while (waitingLoad.length) waitingLoad.shift()()
     } else {
-      // FIXME: load FUB and if it's >=0, then continue compaction
       const blockStart = fileSize - blockSize
       raf.read(blockStart, blockSize, function lastBlockLoaded(err, blockBuf) {
         if (err) throw err
@@ -457,7 +456,6 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       waitingCompaction.push(fn)
       return
     }
-    // FIXME: needs to be aware of compaction, and wait for it
     if (blocksToBeWritten.size === 0 && writingBlockIndex === -1) fn()
     else {
       const latestBlockIndex =
@@ -475,9 +473,6 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     for (let x of iterable) res = x
     return res
   }
-
-  // FIXME: stream() to find firstUncompactedBlockIndex has to be different from
-  // normal stream() (which itself should start from FUBI)
 
   return (self = {
     // Public API:
