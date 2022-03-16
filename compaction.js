@@ -17,7 +17,7 @@ function getStateFilename(logFilename) {
  *
  * - bytes 0..3: UInt32LE for the blockIndex to-be-compacted
  * - bytes 4..7: UInt32LE for the 1st unshifted record's offset
- * - bytes 8..(8+blockSize): blockBuf containing the 1st unshifted record
+ * - bytes 8..(8+blockSize-1): blockBuf containing the 1st unshifted record
  */
 function PersistentState(logFilename, blockSize) {
   const raf = RAF(getStateFilename(logFilename))
