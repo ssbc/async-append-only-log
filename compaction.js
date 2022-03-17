@@ -4,6 +4,7 @@
 
 const RAF = require('polyraf')
 const fs = require('fs')
+const push = require('push-stream')
 const mutexify = require('mutexify')
 const debug = require('debug')('async-append-only-log')
 const Record = require('./record')
@@ -132,7 +133,14 @@ function Compaction(log, onDone) {
       unshiftedBlockBuf = state.unshiftedBlockBuf
       unshiftedBlockIndex = Math.floor(state.unshiftedOffset / log.blockSize)
       if (state.initial) {
-        savePersistentState(cb)
+        findFirstDeletedOffset(function foundFirstDeleted(err, offset) {
+          if (err) return cb(err)
+          unshiftedOffset = offset
+          unshiftedBlockBuf = null
+          unshiftedBlockIndex = Math.floor(offset / log.blockSize)
+          compactedBlockIndex = unshiftedBlockIndex
+          savePersistentState(cb)
+        })
       } else {
         cb()
       }
@@ -158,6 +166,17 @@ function Compaction(log, onDone) {
         cb
       )
     }
+  }
+
+  function findFirstDeletedOffset(cb) {
+    const stream = log.stream({ offsets: true, values: true }).pipe(
+      push.drain(function sinkToFindFirstDeleted(record) {
+        if (record.value === null) {
+          stream.abort(true)
+          cb(null, record.offset)
+        }
+      })
+    )
   }
 
   function continueCompactingBlock() {
