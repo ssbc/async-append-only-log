@@ -24,7 +24,7 @@ function PersistentState(logFilename, blockSize) {
   const writeLock = mutexify()
 
   function load(cb) {
-    raf.stat((err, stat) => {
+    raf.stat(function onRAFStatDone(err, stat) {
       const fileSize = !err && stat ? stat.size : -1
       if (fileSize <= 0) {
         const state = {
@@ -36,7 +36,7 @@ function PersistentState(logFilename, blockSize) {
         cb(null, state)
       } else {
         const stateFileSize = 4 + 4 + blockSize
-        raf.read(0, stateFileSize, (err, buf) => {
+        raf.read(0, stateFileSize, function onFirstRAFReadDone(err, buf) {
           if (err) return cb(err)
           const state = {
             compactedBlockIndex: buf.readUInt32LE(0),
@@ -56,10 +56,10 @@ function PersistentState(logFilename, blockSize) {
     buf.writeUInt32LE(state.unshiftedOffset, 4)
     state.unshiftedBlockBuf.copy(buf, 8)
     writeLock((unlock) => {
-      raf.write(0, buf, (err) => {
+      raf.write(0, buf, function onRafWriteDone(err) {
         if (err) return unlock(cb, err)
         if (raf.fd) {
-          fs.fsync(raf.fd, (err) => {
+          fs.fsync(raf.fd, function onFsyncDone(err) {
             if (err) unlock(cb, err)
             else unlock(cb, null, state)
           })
@@ -69,9 +69,9 @@ function PersistentState(logFilename, blockSize) {
   }
 
   function destroy(cb) {
-    raf.close((err) => {
+    raf.close(function onRAFClosed(err) {
       if (err) return cb(err)
-      fs.unlink(raf.filename, (err) => {
+      fs.unlink(raf.filename, function onStateFileDeleted(err) {
         if (err) return cb(err)
         else cb()
       })
@@ -118,14 +118,14 @@ function Compaction(log, onDone) {
   let unshiftedBlockBuf = null
   let unshiftedOffset = 0
 
-  loadPersistentState((err) => {
+  loadPersistentState(function onCompactionStateLoaded2(err) {
     if (err) return onDone(err)
     compactedBlockIndex -= 1 // because it'll be incremented very soon
     compactNextBlock()
   })
 
   function loadPersistentState(cb) {
-    persistentState.load((err, state) => {
+    persistentState.load(function onCompactionStateLoaded(err, state) {
       if (err) return cb(err)
       compactedBlockIndex = state.compactedBlockIndex
       unshiftedOffset = state.unshiftedOffset
@@ -141,7 +141,7 @@ function Compaction(log, onDone) {
 
   function savePersistentState(cb) {
     if (!unshiftedBlockBuf) {
-      loadUnshiftedBlock(() => {
+      loadUnshiftedBlock(function onUnshiftedBlockLoaded() {
         saveIt.call(this)
       })
     } else {
@@ -164,14 +164,14 @@ function Compaction(log, onDone) {
     while (true) {
       // Fetch the unshifted block, if necessary
       if (!unshiftedBlockBuf) {
-        loadUnshiftedBlock(() => {
+        loadUnshiftedBlock(function onUnshiftedBlockLoaded() {
           continueCompactingBlock()
         })
         return
       }
       // When all records have been shifted (thus end of log), stop compacting
       if (unshiftedBlockIndex === -1) {
-        saveCompactedBlock((err) => {
+        saveCompactedBlock(function onCompactedBlockSaved(err) {
           if (err) return onDone(err)
           stop()
         })
@@ -211,7 +211,7 @@ function Compaction(log, onDone) {
       if (cb) cb()
     } else {
       const blockIndex = compactedBlockIndex
-      log.overwrite(blockIndex, compactedBlockBuf, (err) => {
+      log.overwrite(blockIndex, compactedBlockBuf, function onOverwritten(err) {
         if (err && cb) cb(err)
         else if (err) return onDone(err)
         else {
@@ -224,7 +224,7 @@ function Compaction(log, onDone) {
 
   function loadUnshiftedBlock(cb) {
     const blockStart = unshiftedBlockIndex * log.blockSize
-    log.getBlock(blockStart, (err, blockBuf) => {
+    log.getBlock(blockStart, function onBlockLoaded(err, blockBuf) {
       if (err) return onDone(err)
       unshiftedBlockBuf = blockBuf
       cb()
@@ -263,7 +263,7 @@ function Compaction(log, onDone) {
     compactedBlockBuf = Buffer.alloc(log.blockSize)
     compactedOffset = compactedBlockIndex * log.blockSize
     compactedBlockIdenticalToUnshifted = true
-    savePersistentState((err) => {
+    savePersistentState(function onCompactionStateSaved(err) {
       if (err) return onDone(err)
       continueCompactingBlock()
     })
@@ -272,7 +272,7 @@ function Compaction(log, onDone) {
   function stop() {
     compactedBlockBuf = null
     unshiftedBlockBuf = null
-    persistentState.destroy((err) => {
+    persistentState.destroy(function onCompactionStateDestroyed(err) {
       if (err) return onDone(err)
       log.truncate(compactedBlockIndex, onDone)
     })
