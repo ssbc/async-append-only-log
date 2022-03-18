@@ -183,6 +183,7 @@ function Compaction(log, onDone) {
     findFirstDeletedOffset(function gotFirstDeleted(err, holeOffset) {
       if (err) return cb(err)
       if (holeOffset === -1) {
+        compactedBlockIndex = Math.floor(log.since.value / log.blockSize)
         stop()
         return
       }

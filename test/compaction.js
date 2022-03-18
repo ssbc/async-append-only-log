@@ -14,6 +14,36 @@ const hexCodec = {
   decode: (buf) => parseInt(buf.toString('hex'), 16),
 }
 
+tape('compact a log that does not have holes', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, { blockSize: 10 })
+
+  const buf1 = Buffer.from('first')
+  const buf2 = Buffer.from('second')
+
+  const [, offset1] = await run(log.append)(buf1)
+  const [, offset2] = await run(log.append)(buf2)
+  await run(log.onDrain)()
+  t.pass('append two records')
+
+  const [err] = await run(log.compact)()
+  await run(log.onDrain)()
+  t.error(err, 'no error when compacting')
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(ary, [buf1, buf2], 'both records exist')
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
 tape('delete first record, compact, stream', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, { blockSize: 10 })
