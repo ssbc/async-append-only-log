@@ -13,6 +13,10 @@ function getStateFilename(logFilename) {
   return logFilename + '.compaction'
 }
 
+function stateFileExists(logFilename) {
+  return fs.existsSync(getStateFilename(logFilename))
+}
+
 /**
  * This file has state describing the continuation of the compaction algorithm.
  *
@@ -70,13 +74,17 @@ function PersistentState(logFilename, blockSize) {
   }
 
   function destroy(cb) {
-    raf.close(function onRAFClosed(err) {
-      if (err) return cb(err)
-      fs.unlink(raf.filename, function onStateFileDeleted(err) {
+    if (stateFileExists(logFilename)) {
+      raf.close(function onRAFClosed(err) {
         if (err) return cb(err)
-        else cb()
+        fs.unlink(raf.filename, function onStateFileDeleted(err) {
+          if (err) return cb(err)
+          else cb()
+        })
       })
-    })
+    } else {
+      cb()
+    }
   }
 
   return {
@@ -133,12 +141,15 @@ function Compaction(log, onDone) {
       unshiftedBlockBuf = state.unshiftedBlockBuf
       unshiftedBlockIndex = Math.floor(state.unshiftedOffset / log.blockSize)
       if (state.initial) {
-        findFirstDeletedOffset(function foundFirstDeleted(err, offset) {
+        findStateFromLog(function foundStateFromLog(err, state) {
           if (err) return cb(err)
-          unshiftedOffset = offset
-          unshiftedBlockBuf = null
-          unshiftedBlockIndex = Math.floor(offset / log.blockSize)
-          compactedBlockIndex = unshiftedBlockIndex
+          compactedBlockIndex = state.compactedBlockIndex
+          unshiftedOffset = state.unshiftedOffset
+          unshiftedBlockBuf = state.unshiftedBlockBuf
+          unshiftedBlockIndex = Math.floor(
+            state.unshiftedOffset / log.blockSize
+          )
+          compactedOffset = state.compactedBlockIndex * log.blockSize
           savePersistentState(cb)
         })
       } else {
@@ -168,14 +179,64 @@ function Compaction(log, onDone) {
     }
   }
 
-  function findFirstDeletedOffset(cb) {
-    const stream = log.stream({ offsets: true, values: true }).pipe(
-      push.drain(function sinkToFindFirstDeleted(record) {
-        if (record.value === null) {
-          stream.abort(true)
-          cb(null, record.offset)
+  function findStateFromLog(cb) {
+    findFirstDeletedOffset(function gotFirstDeleted(err, holeOffset) {
+      if (err) return cb(err)
+      if (holeOffset === -1) {
+        stop()
+        return
+      }
+      const blockStart = holeOffset - (holeOffset % log.blockSize)
+      const blockIndex = Math.floor(holeOffset / log.blockSize)
+      findNonDeletedOffsetGTE(blockStart, function gotNonDeleted(err, offset) {
+        if (err) return cb(err)
+        if (offset === -1) {
+          stop()
+          return
         }
+        const state = {
+          compactedBlockIndex: blockIndex,
+          unshiftedOffset: offset,
+          unshiftedBlockBuf: null,
+        }
+        cb(null, state)
       })
+    })
+  }
+
+  function findFirstDeletedOffset(cb) {
+    let once = false
+    log.stream({ offsets: true, values: true }).pipe(
+      push.drain(
+        function sinkToFindFirstDeleted(record) {
+          if (record.value === null && !once) {
+            once = true
+            cb(null, record.offset)
+            return false
+          }
+        },
+        function sinkEndedLookingForDeleted() {
+          cb(null, -1)
+        }
+      )
+    )
+  }
+
+  function findNonDeletedOffsetGTE(gte, cb) {
+    let once = false
+    log.stream({ gte, offsets: true, values: true }).pipe(
+      push.drain(
+        function sinkToFindNonDeleted(record) {
+          if (record.value !== null && !once) {
+            once = true
+            cb(null, record.offset)
+            return false
+          }
+        },
+        function sinkEndedLookingForNonDeleted() {
+          cb(null, -1)
+        }
+      )
     )
   }
 
@@ -278,7 +339,6 @@ function Compaction(log, onDone) {
 
   function compactNextBlock() {
     compactedBlockIndex += 1
-
     compactedBlockBuf = Buffer.alloc(log.blockSize)
     compactedOffset = compactedBlockIndex * log.blockSize
     compactedBlockIdenticalToUnshifted = true
@@ -300,8 +360,6 @@ function Compaction(log, onDone) {
   return {}
 }
 
-Compaction.stateFileExists = function stateFileExists(logFilename) {
-  return fs.existsSync(getStateFilename(logFilename))
-}
+Compaction.stateFileExists = stateFileExists
 
 module.exports = Compaction
