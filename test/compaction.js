@@ -78,27 +78,29 @@ tape('delete first record, compact, stream', async (t) => {
   t.end()
 })
 
-tape('delete second record, compact, stream', async (t) => {
+tape('delete last record, compact, stream', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, { blockSize: 10 })
 
   const buf1 = Buffer.from('first')
   const buf2 = Buffer.from('second')
+  const buf3 = Buffer.from('third')
 
   const [, offset1] = await run(log.append)(buf1)
   const [, offset2] = await run(log.append)(buf2)
+  const [, offset3] = await run(log.append)(buf3)
   await run(log.onDrain)()
-  t.pass('append two records')
+  t.pass('append three records')
 
-  await run(log.del)(offset2)
+  await run(log.del)(offset3)
   await run(log.onDrain)()
-  t.pass('delete second record')
+  t.pass('delete third record')
 
   await new Promise((resolve) => {
     log.stream({ offsets: false }).pipe(
       push.collect((err, ary) => {
         t.error(err, 'no error when streaming log')
-        t.deepEqual(ary, [buf1, null], 'all blocks')
+        t.deepEqual(ary, [buf1, buf2, null], 'all blocks')
         resolve()
       })
     )
@@ -112,7 +114,7 @@ tape('delete second record, compact, stream', async (t) => {
     log.stream({ offsets: false }).pipe(
       push.collect((err, ary) => {
         t.error(err, 'no error when streaming compacted log')
-        t.deepEqual(ary, [buf1], 'last block truncated away')
+        t.deepEqual(ary, [buf1, buf2], 'last block truncated away')
         resolve()
       })
     )

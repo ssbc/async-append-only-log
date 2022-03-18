@@ -192,6 +192,7 @@ function Compaction(log, onDone) {
       findNonDeletedOffsetGTE(blockStart, function gotNonDeleted(err, offset) {
         if (err) return cb(err)
         if (offset === -1) {
+          compactedBlockIndex = Math.floor((holeOffset - 1) / log.blockSize)
           stop()
           return
         }
