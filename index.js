@@ -132,38 +132,30 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     for (let offsetInRecord = 0; offsetInRecord < blockSize; ) {
       const length = Record.readDataLength(blockBuf, offsetInRecord)
       if (length === EOB.asNumber) break
-      else {
-        const [dataBuf, recSize] = Record.read(blockBuf, offsetInRecord)
-        if (offsetInRecord + recSize > blockSize) {
-          // corrupt length data
-          fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
-          return
-        } else {
-          if (validateRecord(dataBuf)) {
-            lastGoodOffset = offsetInRecord
-            offsetInRecord += recSize
-          } else {
-            // corrupt message data
-            fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
-            return
-          }
-        }
+      const [dataBuf, recSize] = Record.read(blockBuf, offsetInRecord)
+      const isLengthCorrupt = offsetInRecord + recSize > blockSize
+      const isDataCorrupt = !validateRecord(dataBuf)
+      if (isLengthCorrupt || isDataCorrupt) {
+        fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
+        return
       }
+      lastGoodOffset = offsetInRecord
+      offsetInRecord += recSize
     }
 
     cb(null, lastGoodOffset)
   }
 
   function getBlock(offset, cb) {
-    const blockStart = getBlockStart(offset)
     const blockIndex = getBlockIndex(offset)
 
-    const cachedBlockBuf = cache.get(blockIndex)
-    if (cachedBlockBuf) {
+    if (cache.has(blockIndex)) {
       debug('getting offset %d from cache', offset)
+      const cachedBlockBuf = cache.get(blockIndex)
       cb(null, cachedBlockBuf)
     } else {
       debug('getting offset %d from disc', offset)
+      const blockStart = getBlockStart(offset)
       raf.read(blockStart, blockSize, function onRAFReadDone(err, blockBuf) {
         cache.set(blockIndex, blockBuf)
         cb(err, blockBuf)
