@@ -30,7 +30,7 @@ const DEFAULT_CODEC = { encode: (x) => x, decode: (x) => x }
 const DEFAULT_WRITE_TIMEOUT = 250
 const DEFAULT_VALIDATE = () => true
 
-module.exports = function (filename, opts) {
+module.exports = function AsyncAppendOnlyLog(filename, opts) {
   const cache = new Cache(1024) // this is potentially 65mb!
   const raf = RAF(filename)
   const blockSize = (opts && opts.blockSize) || DEFAULT_BLOCK_SIZE
@@ -49,7 +49,7 @@ module.exports = function (filename, opts) {
   let nextOffsetInBlock = null
   const since = Obv() // offset of last written record
 
-  raf.stat(function (err, stat) {
+  raf.stat(function onRAFStatDone(err, stat) {
     if (err) debug('failed to stat ' + filename, err)
 
     const fileSize = stat ? stat.size : -1
@@ -64,22 +64,26 @@ module.exports = function (filename, opts) {
       while (waitingLoad.length) waitingLoad.shift()()
     } else {
       const blockStart = fileSize - blockSize
-      raf.read(blockStart, blockSize, (err, blockBuf) => {
+      raf.read(blockStart, blockSize, function lastBlockLoaded(err, blockBuf) {
         if (err) throw err
 
-        getLastGoodRecord(blockBuf, blockStart, (err, offsetInBlock) => {
-          if (err) throw err
+        getLastGoodRecord(
+          blockBuf,
+          blockStart,
+          function gotLastGoodRecord(err, offsetInBlock) {
+            if (err) throw err
 
-          latestBlockBuf = blockBuf
-          latestBlockIndex = fileSize / blockSize - 1
-          const recSize = Record.readSize(blockBuf, offsetInBlock)
-          nextOffsetInBlock = offsetInBlock + recSize
-          since.set(blockStart + offsetInBlock)
+            latestBlockBuf = blockBuf
+            latestBlockIndex = fileSize / blockSize - 1
+            const recSize = Record.readSize(blockBuf, offsetInBlock)
+            nextOffsetInBlock = offsetInBlock + recSize
+            since.set(blockStart + offsetInBlock)
 
-          debug('opened file, since: %d', since.value)
+            debug('opened file, since: %d', since.value)
 
-          while (waitingLoad.length) waitingLoad.shift()()
-        })
+            while (waitingLoad.length) waitingLoad.shift()()
+          }
+        )
       })
     }
   })
@@ -103,12 +107,12 @@ module.exports = function (filename, opts) {
   const writeLock = mutexify()
 
   function writeWithFSync(blockStart, blockBuf, successValue, cb) {
-    writeLock((unlock) => {
-      raf.write(blockStart, blockBuf, (err) => {
+    writeLock(function onWriteLockReleased(unlock) {
+      raf.write(blockStart, blockBuf, function onRAFWriteDone(err) {
         if (err) return unlock(cb, err)
 
         if (raf.fd) {
-          fs.fsync(raf.fd, (err) => {
+          fs.fsync(raf.fd, function onFSyncDone(err) {
             if (err) unlock(cb, err)
             else unlock(cb, null, successValue)
           })
@@ -160,7 +164,7 @@ module.exports = function (filename, opts) {
       cb(null, cachedBlockBuf)
     } else {
       debug('getting offset %d from disc', offset)
-      raf.read(blockStart, blockSize, (err, blockBuf) => {
+      raf.read(blockStart, blockSize, function onRAFReadDone(err, blockBuf) {
         cache.set(blockIndex, blockBuf)
         cb(err, blockBuf)
       })
@@ -182,7 +186,7 @@ module.exports = function (filename, opts) {
       return cb(`Offset ${offset} is not a number`)
     else if (offset < 0) return cb(`Offset is ${offset} must be >= 0`)
 
-    getBlock(offset, (err, blockBuf) => {
+    getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
       getData(blockBuf, getOffsetInBlock(offset), cb)
     })
@@ -210,7 +214,7 @@ module.exports = function (filename, opts) {
   }
 
   function del(offset, cb) {
-    getBlock(offset, (err, blockBuf) => {
+    getBlock(offset, function gotBlockForDelete(err, blockBuf) {
       if (err) return cb(err)
       Record.overwriteWithZeroes(blockBuf, getOffsetInBlock(offset))
       // we write directly here to make normal write simpler
@@ -307,9 +311,10 @@ module.exports = function (filename, opts) {
 
   const scheduleWrite = debounce(write, writeTimeout)
 
-  function writeBlock(blockIndex) {
-    if (!blocksToBeWritten.has(blockIndex)) return
-    writingBlockIndex = blockIndex
+  function write() {
+    if (blocksToBeWritten.size === 0) return
+    const blockIndex = blocksToBeWritten.keys().next().value
+    const blockStart = blockIndex * blockSize
     const { blockBuf, offset } = blocksToBeWritten.get(blockIndex)
     blocksToBeWritten.delete(blockIndex)
 
@@ -318,7 +323,8 @@ module.exports = function (filename, opts) {
       blockBuf.length,
       blockIndex * blockSize
     )
-    writeWithFSync(blockIndex * blockSize, blockBuf, null, (err) => {
+    writingBlockIndex = blockIndex
+    writeWithFSync(blockStart, blockBuf, null, function onBlockWritten(err) {
       const drainsBefore = (waitingDrain.get(blockIndex) || []).slice(0)
       writingBlockIndex = -1
       if (err) {
@@ -328,9 +334,9 @@ module.exports = function (filename, opts) {
         since.set(offset)
 
         // write values to live streams
-        self.streams.forEach((stream) => {
+        for (const stream of self.streams) {
           if (stream.live) stream.liveResume()
-        })
+        }
 
         debug(
           'draining the waiting queue for %d, items: %d',
@@ -355,14 +361,8 @@ module.exports = function (filename, opts) {
     })
   }
 
-  function write() {
-    // just one at a time
-    if (blocksToBeWritten.size > 0)
-      writeBlock(blocksToBeWritten.keys().next().value)
-  }
-
   function close(cb) {
-    self.onDrain(function () {
+    onDrain(function closeAfterHavingDrained() {
       while (self.streams.length)
         self.streams.shift().abort(new Error('async-append-only-log closed'))
       raf.close(cb)
