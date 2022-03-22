@@ -307,9 +307,9 @@ module.exports = function (filename, opts) {
 
   const scheduleWrite = debounce(write, writeTimeout)
 
-  function writeBlock(blockIndex) {
-    if (!blocksToBeWritten.has(blockIndex)) return
-    writingBlockIndex = blockIndex
+  function write() {
+    if (blocksToBeWritten.size === 0) return
+    const blockIndex = blocksToBeWritten.keys().next().value
     const { blockBuf, offset } = blocksToBeWritten.get(blockIndex)
     blocksToBeWritten.delete(blockIndex)
 
@@ -318,6 +318,7 @@ module.exports = function (filename, opts) {
       blockBuf.length,
       blockIndex * blockSize
     )
+    writingBlockIndex = blockIndex
     writeWithFSync(blockIndex * blockSize, blockBuf, null, (err) => {
       const drainsBefore = (waitingDrain.get(blockIndex) || []).slice(0)
       writingBlockIndex = -1
@@ -353,12 +354,6 @@ module.exports = function (filename, opts) {
         write() // next!
       }
     })
-  }
-
-  function write() {
-    // just one at a time
-    if (blocksToBeWritten.size > 0)
-      writeBlock(blocksToBeWritten.keys().next().value)
   }
 
   function close(cb) {
