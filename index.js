@@ -139,12 +139,12 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function truncateWithFSync(newSize, cb) {
-    writeLock((unlock) => {
-      raf.del(newSize, Infinity, (err) => {
+    writeLock(function onWriteLockReleasedForTruncate(unlock) {
+      raf.del(newSize, Infinity, function onRAFDeleteDone(err) {
         if (err) return unlock(cb, err)
 
         if (raf.fd) {
-          fs.fsync(raf.fd, (err) => {
+          fs.fsync(raf.fd, function onFSyncDoneForTruncate(err) {
             if (err) unlock(cb, err)
             else unlock(cb, null)
           })
