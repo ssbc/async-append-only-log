@@ -414,7 +414,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     for (let i = lastBlockIndex + 1; i < latestBlockIndex; ++i) {
       cache.remove(i)
     }
-    truncateWithFSync(newSize, (err) => {
+    truncateWithFSync(newSize, function onTruncateWithFSyncDone(err) {
       if (err) return cb(err)
       latestBlockIndex = lastBlockIndex
       since.set(newSize) // FIXME: smells wrong
