@@ -214,6 +214,12 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function del(offset, cb) {
+    if (blocksToBeWritten.has(getBlockIndex(offset))) {
+      onDrain(function delAfterDrained() {
+        del(offset, cb)
+      })
+      return
+    }
     getBlock(offset, function gotBlockForDelete(err, blockBuf) {
       if (err) return cb(err)
       Record.overwriteWithZeroes(blockBuf, getOffsetInBlock(offset))
