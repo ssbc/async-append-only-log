@@ -49,7 +49,8 @@ tape('simple', function (t) {
 
                 db.get(offset3, function (err, deletedBuf) {
                   t.ok(err)
-                  t.equal(err.message, 'item has been deleted')
+                  t.equal(err.message, 'Record has been deleted')
+                  t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
                   // write changes
                   db.onDrain(t.end)
                 })
@@ -80,14 +81,16 @@ tape('simple reread', function (t) {
 
       db.get(offset3, function (err) {
         t.ok(err)
-        t.equal(err.message, 'item has been deleted')
+        t.equal(err.message, 'Record has been deleted')
+        t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
 
         db.del(offset2, function (err) {
           t.error(err)
 
           db.get(offset2, function (err, deletedBuf) {
             t.ok(err)
-            t.equal(err.message, 'item has been deleted')
+            t.equal(err.message, 'Record has been deleted')
+            t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
             // write changes
             db.close(t.end)
           })
@@ -107,7 +110,8 @@ tape('simple reread 2', function (t) {
 
     db.get(msg1.length + 2, function (err, deletedBuf) {
       t.ok(err)
-      t.equal(err.message, 'item has been deleted')
+      t.equal(err.message, 'Record has been deleted')
+      t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
 
       t.end()
     })

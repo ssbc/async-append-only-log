@@ -11,6 +11,12 @@ const debug = require('debug')('async-append-only-log')
 const fs = require('fs')
 const mutexify = require('mutexify')
 
+const {
+  deletedRecordErr,
+  nanOffsetErr,
+  negativeOffsetErr,
+  outOfBoundsOffsetErr,
+} = require('./errors')
 const Stream = require('./stream')
 const Record = require('./record')
 
@@ -163,24 +169,18 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     }
   }
 
-  function getData(blockBuf, offsetInBlock, cb) {
-    const [dataBuf] = Record.read(blockBuf, offsetInBlock)
-
-    if (isBufferZero(dataBuf)) {
-      const err = new Error('item has been deleted')
-      err.code = 'ERR_AAOL_DELETED_RECORD'
-      return cb(err)
-    } else cb(null, codec.decode(dataBuf))
-  }
-
   function get(offset, cb) {
-    if (typeof offset !== 'number' || isNaN(offset))
-      return cb(`Offset ${offset} is not a number`)
-    else if (offset < 0) return cb(`Offset is ${offset} must be >= 0`)
+    const logSize = latestBlockIndex * blockSize + nextOffsetInBlock - 1
+    if (typeof offset !== 'number') return cb(nanOffsetErr(offset))
+    if (isNaN(offset)) return cb(nanOffsetErr(offset))
+    if (offset < 0) return cb(negativeOffsetErr(offset))
+    if (offset > logSize) return cb(outOfBoundsOffsetErr(offset, logSize))
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
-      getData(blockBuf, getOffsetInBlock(offset), cb)
+      const [dataBuf] = Record.read(blockBuf, getOffsetInBlock(offset))
+      if (isBufferZero(dataBuf)) return cb(deletedRecordErr())
+      cb(null, codec.decode(dataBuf))
     })
   }
 
