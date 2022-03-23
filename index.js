@@ -14,6 +14,13 @@ const mutexify = require('mutexify')
 const Stream = require('./stream')
 const Record = require('./record')
 
+class ErrorWithCode extends Error {
+  constructor(message, code) {
+    super(message)
+    this.code = code
+  }
+}
+
 /**
  * The "End of Block" is a special field used to mark the end of a block, and
  * in practice it's like a Record header "length" field, with the value 0.
@@ -167,22 +174,37 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     const [dataBuf] = Record.read(blockBuf, offsetInBlock)
 
     if (isBufferZero(dataBuf)) {
-      const err = new Error('item has been deleted')
-      err.code = 'ERR_AAOL_DELETED_RECORD'
-      return cb(err)
+      return cb(
+        new ErrorWithCode('Record has been deleted', 'ERR_AAOL_DELETED_RECORD')
+      )
     } else cb(null, codec.decode(dataBuf))
   }
 
   function get(offset, cb) {
     if (typeof offset !== 'number' || isNaN(offset)) {
-      return cb(new Error(`Offset ${offset} is not a number`))
+      return cb(
+        new ErrorWithCode(
+          `Offset ${offset} is not a number`,
+          'ERR_AAOL_INVALID_OFFSET'
+        )
+      )
     }
     if (offset < 0) {
-      return cb(new Error(`Offset ${offset} is negative`))
+      return cb(
+        new ErrorWithCode(
+          `Offset ${offset} is negative`,
+          'ERR_AAOL_INVALID_OFFSET'
+        )
+      )
     }
     const logSize = latestBlockIndex * blockSize + nextOffsetInBlock - 1
     if (offset > logSize) {
-      return cb(new Error(`Offset ${offset} is beyond log size ${logSize}`))
+      return cb(
+        new ErrorWithCode(
+          `Offset ${offset} is beyond log size ${logSize}`,
+          'ERR_AAOL_OFFSET_OUT_OF_BOUNDS'
+        )
+      )
     }
 
     getBlock(offset, function gotBlock(err, blockBuf) {
