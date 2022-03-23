@@ -11,15 +11,14 @@ const debug = require('debug')('async-append-only-log')
 const fs = require('fs')
 const mutexify = require('mutexify')
 
+const {
+  deletedRecordErr,
+  nanOffsetErr,
+  negativeOffsetErr,
+  outOfBoundsOffsetErr,
+} = require('./errors')
 const Stream = require('./stream')
 const Record = require('./record')
-
-class ErrorWithCode extends Error {
-  constructor(message, code) {
-    super(message)
-    this.code = code
-  }
-}
 
 /**
  * The "End of Block" is a special field used to mark the end of a block, and
@@ -171,43 +170,16 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function get(offset, cb) {
-    if (typeof offset !== 'number' || isNaN(offset)) {
-      return cb(
-        new ErrorWithCode(
-          `Offset ${offset} is not a number`,
-          'ERR_AAOL_INVALID_OFFSET'
-        )
-      )
-    }
-    if (offset < 0) {
-      return cb(
-        new ErrorWithCode(
-          `Offset ${offset} is negative`,
-          'ERR_AAOL_INVALID_OFFSET'
-        )
-      )
-    }
     const logSize = latestBlockIndex * blockSize + nextOffsetInBlock - 1
-    if (offset > logSize) {
-      return cb(
-        new ErrorWithCode(
-          `Offset ${offset} is beyond log size ${logSize}`,
-          'ERR_AAOL_OFFSET_OUT_OF_BOUNDS'
-        )
-      )
-    }
+    if (typeof offset !== 'number') return cb(nanOffsetErr(offset))
+    if (isNaN(offset)) return cb(nanOffsetErr(offset))
+    if (offset < 0) return cb(negativeOffsetErr(offset))
+    if (offset > logSize) return cb(outOfBoundsOffsetErr(offset, logSize))
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
       const [dataBuf] = Record.read(blockBuf, getOffsetInBlock(offset))
-      if (isBufferZero(dataBuf)) {
-        return cb(
-          new ErrorWithCode(
-            'Record has been deleted',
-            'ERR_AAOL_DELETED_RECORD'
-          )
-        )
-      }
+      if (isBufferZero(dataBuf)) return cb(deletedRecordErr())
       cb(null, codec.decode(dataBuf))
     })
   }
