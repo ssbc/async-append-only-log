@@ -149,7 +149,6 @@ function Compaction(log, onDone) {
           unshiftedBlockIndex = Math.floor(
             state.unshiftedOffset / log.blockSize
           )
-          compactedOffset = state.compactedBlockIndex * log.blockSize
           savePersistentState(cb)
         })
       } else {
