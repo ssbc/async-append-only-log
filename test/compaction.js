@@ -224,6 +224,79 @@ tape('shift many blocks', async (t) => {
   t.end()
 })
 
+tape('cannot read truncated regions of the log', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, { blockSize: 11, codec: hexCodec })
+
+  await run(log.append)(
+    [
+      // block 0
+      [0x11, 0x22, 0x33], // offsets: 0, 3, 6
+      // block 1
+      [0x44, 0x55, 0x66], // offsets: 11+0, 11+3, 11+6
+      // block 2
+      [0x77, 0x88, 0x99], // offsets: 22+0, 22+3, 22+6
+    ].flat()
+  )
+  t.pass('appended records')
+
+  await run(log.del)(11 + 3)
+  await run(log.del)(11 + 6)
+  await run(log.del)(22 + 0)
+  await run(log.onDrain)()
+  t.pass('delete some records')
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.deepEqual(
+          ary,
+          [
+            // block 0
+            [0x11, 0x22, 0x33],
+            // block 1
+            [0x44, null, null],
+            // block 2
+            [null, 0x88, 0x99],
+          ].flat(),
+          'log has some holes'
+        )
+        resolve()
+      })
+    )
+  })
+
+  const [err] = await run(log.compact)()
+  await run(log.onDrain)()
+  t.error(err, 'no error when compacting')
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.deepEqual(
+          ary,
+          [
+            // block 0
+            [0x11, 0x22, 0x33],
+            // block 1
+            [0x44, 0x88, 0x99],
+          ].flat(),
+          'log has no holes'
+        )
+        resolve()
+      })
+    )
+  })
+
+  const [err2, item] = await run(log.get)(22 + 3) // outdated offset for 0x88
+  t.ok(err2)
+  t.equals(err2.code, 'ERR_AAOL_OFFSET_OUT_OF_BOUNDS')
+  t.notEquals(item, 0x88)
+
+  await run(log.close)()
+  t.end()
+})
+
 tape('compact handling last deleted record on last block', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, {

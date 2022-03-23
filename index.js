@@ -82,29 +82,32 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       while (waitingLoad.length) waitingLoad.shift()()
     } else {
       const blockStart = fileSize - blockSize
-      raf.read(blockStart, blockSize, function lastBlockLoaded(err, blockBuf) {
+      loadLatestBlock(blockStart, function onLoadedLatestBlock(err) {
         if (err) throw err
-
-        getLastGoodRecord(
-          blockBuf,
-          blockStart,
-          function gotLastGoodRecord(err, offsetInBlock) {
-            if (err) throw err
-
-            latestBlockBuf = blockBuf
-            latestBlockIndex = fileSize / blockSize - 1
-            const recSize = Record.readSize(blockBuf, offsetInBlock)
-            nextOffsetInBlock = offsetInBlock + recSize
-            since.set(blockStart + offsetInBlock)
-
-            debug('opened file, since: %d', since.value)
-
-            while (waitingLoad.length) waitingLoad.shift()()
-          }
-        )
+        debug('opened file, since: %d', since.value)
+        while (waitingLoad.length) waitingLoad.shift()()
       })
     }
   })
+
+  function loadLatestBlock(blockStart, cb) {
+    raf.read(blockStart, blockSize, function onRAFReadLastDone(err, blockBuf) {
+      if (err) return cb(err)
+      getLastGoodRecord(
+        blockBuf,
+        blockStart,
+        function gotLastGoodRecord(err, offsetInBlock) {
+          if (err) return cb(err)
+          latestBlockBuf = blockBuf
+          latestBlockIndex = blockStart / blockSize
+          const recSize = Record.readSize(blockBuf, offsetInBlock)
+          nextOffsetInBlock = offsetInBlock + recSize
+          since.set(blockStart + offsetInBlock)
+          cb()
+        }
+      )
+    })
+  }
 
   function getOffsetInBlock(offset) {
     return offset % blockSize
@@ -197,11 +200,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function get(offset, cb) {
-    const logSize = latestBlockIndex * blockSize + nextOffsetInBlock - 1
+    const logSize = latestBlockIndex * blockSize + nextOffsetInBlock
     if (typeof offset !== 'number') return cb(nanOffsetErr(offset))
     if (isNaN(offset)) return cb(nanOffsetErr(offset))
     if (offset < 0) return cb(negativeOffsetErr(offset))
-    if (offset > logSize) return cb(outOfBoundsOffsetErr(offset, logSize))
+    if (offset >= logSize) return cb(outOfBoundsOffsetErr(offset, logSize))
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
@@ -411,17 +414,19 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
   function truncate(newLatestBlockIndex, cb) {
     if (newLatestBlockIndex >= latestBlockIndex) return cb(null, 0)
-    const size = latestBlockIndex * blockSize
-    const newSize = newLatestBlockIndex * blockSize
+    const size = (latestBlockIndex + 1) * blockSize
+    const newSize = (newLatestBlockIndex + 1) * blockSize
     for (let i = newLatestBlockIndex + 1; i < latestBlockIndex; ++i) {
       cache.remove(i)
     }
     truncateWithFSync(newSize, function onTruncateWithFSyncDone(err) {
       if (err) return cb(err)
-      latestBlockIndex = newLatestBlockIndex
-      since.set(newSize) // FIXME: smells wrong
-      const sizeDiff = size - newSize
-      cb(null, sizeDiff)
+      const blockStart = newSize - blockSize
+      loadLatestBlock(blockStart, function onTruncateLoadedLatestBlock(err) {
+        if (err) return cb(err)
+        const sizeDiff = size - newSize
+        cb(null, sizeDiff)
+      })
     })
   }
 
