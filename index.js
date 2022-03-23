@@ -180,6 +180,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     if (offset < 0) {
       return cb(new Error(`Offset ${offset} is negative`))
     }
+    const logSize = latestBlockIndex * blockSize + nextOffsetInBlock - 1
+    if (offset > logSize) {
+      return cb(new Error(`Offset ${offset} is beyond log size ${logSize}`))
+    }
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)

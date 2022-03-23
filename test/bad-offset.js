@@ -45,3 +45,22 @@ tape('-1', function (t) {
     })
   })
 })
+
+tape('beyond log size', function (t) {
+  var file = '/tmp/dsf-test-bad-offset.log'
+  try {
+    fs.unlinkSync(file)
+  } catch (_) {}
+  var db = Log(file, { blockSize: 2 * 1024 })
+
+  var msg2 = Buffer.from('testing')
+
+  db.append(msg2, function (err, offset1) {
+    if (err) throw err
+    t.equal(offset1, 0)
+    db.get(10240, function (err, b) {
+      t.match(err.message, /Offset 10240 is beyond log size/, err.message)
+      db.close(t.end)
+    })
+  })
+})
