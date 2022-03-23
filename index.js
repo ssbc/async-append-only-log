@@ -170,16 +170,6 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     }
   }
 
-  function getData(blockBuf, offsetInBlock, cb) {
-    const [dataBuf] = Record.read(blockBuf, offsetInBlock)
-
-    if (isBufferZero(dataBuf)) {
-      return cb(
-        new ErrorWithCode('Record has been deleted', 'ERR_AAOL_DELETED_RECORD')
-      )
-    } else cb(null, codec.decode(dataBuf))
-  }
-
   function get(offset, cb) {
     if (typeof offset !== 'number' || isNaN(offset)) {
       return cb(
@@ -209,7 +199,16 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
-      getData(blockBuf, getOffsetInBlock(offset), cb)
+      const [dataBuf] = Record.read(blockBuf, getOffsetInBlock(offset))
+      if (isBufferZero(dataBuf)) {
+        return cb(
+          new ErrorWithCode(
+            'Record has been deleted',
+            'ERR_AAOL_DELETED_RECORD'
+          )
+        )
+      }
+      cb(null, codec.decode(dataBuf))
     })
   }
 
