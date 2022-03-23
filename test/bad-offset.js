@@ -19,7 +19,8 @@ tape('NaN', function (t) {
     if (err) throw err
     t.equal(offset1, 0)
     db.get(NaN, function (err, b) {
-      t.equal(err, 'Offset NaN is not a number')
+      t.ok(err)
+      t.match(err.message, /Offset NaN is not a number/, err.message)
       db.close(t.end)
     })
   })
@@ -38,7 +39,8 @@ tape('-1', function (t) {
     if (err) throw err
     t.equal(offset1, 0)
     db.get(-1, function (err, b) {
-      t.equal(err, 'Offset is -1 must be >= 0')
+      t.ok(err)
+      t.match(err.message, /Offset -1 is negative/, err.message)
       db.close(t.end)
     })
   })

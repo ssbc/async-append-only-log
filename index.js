@@ -174,9 +174,12 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function get(offset, cb) {
-    if (typeof offset !== 'number' || isNaN(offset))
-      return cb(`Offset ${offset} is not a number`)
-    else if (offset < 0) return cb(`Offset is ${offset} must be >= 0`)
+    if (typeof offset !== 'number' || isNaN(offset)) {
+      return cb(new Error(`Offset ${offset} is not a number`))
+    }
+    if (offset < 0) {
+      return cb(new Error(`Offset ${offset} is negative`))
+    }
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
