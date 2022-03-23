@@ -56,6 +56,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let nextOffsetInBlock = null
   const since = Obv() // offset of last written record
   let compaction = null
+  const compactionSince = Obv()
   const waitingCompaction = []
 
   onLoad(function maybeResumeCompaction() {
@@ -408,17 +409,19 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     writeWithFSync(blockStart, blockBuf, null, cb)
   }
 
-  function truncate(lastBlockIndex, cb) {
-    if (lastBlockIndex >= latestBlockIndex) return cb()
-    const newSize = lastBlockIndex * blockSize
-    for (let i = lastBlockIndex + 1; i < latestBlockIndex; ++i) {
+  function truncate(newLatestBlockIndex, cb) {
+    if (newLatestBlockIndex >= latestBlockIndex) return cb(null, 0)
+    const size = latestBlockIndex * blockSize
+    const newSize = newLatestBlockIndex * blockSize
+    for (let i = newLatestBlockIndex + 1; i < latestBlockIndex; ++i) {
       cache.remove(i)
     }
     truncateWithFSync(newSize, function onTruncateWithFSyncDone(err) {
       if (err) return cb(err)
-      latestBlockIndex = lastBlockIndex
+      latestBlockIndex = newLatestBlockIndex
       since.set(newSize) // FIXME: smells wrong
-      cb()
+      const sizeDiff = size - newSize
+      cb(null, sizeDiff)
     })
   }
 
@@ -429,11 +432,15 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       return
     }
     onDrain(function startCompactAfterDrain() {
-      compaction = new Compaction(self, (err) => {
+      compaction = new Compaction(self, (err, sizeDiff) => {
         compaction = null
         if (err) return cb(err)
+        compactionSince.set({ value: sizeDiff, done: true })
         while (waitingCompaction.length) waitingCompaction.shift()()
         cb()
+      })
+      compaction.since((unshiftedOffset) => {
+        compactionSince.set({ value: unshiftedOffset, done: false })
       })
     })
   }
@@ -486,6 +493,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     onDrain: onLoad(onDrain),
     compact: onLoad(compact),
     since,
+    compactionSince,
     stream(opts) {
       const stream = new Stream(self, opts)
       self.streams.push(stream)

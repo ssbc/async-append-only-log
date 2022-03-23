@@ -177,6 +177,11 @@ tape('shift many blocks', async (t) => {
     )
   })
 
+  const progressArr = []
+  log.compactionSince((obj) => {
+    progressArr.push(obj)
+  })
+
   const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
@@ -203,6 +208,17 @@ tape('shift many blocks', async (t) => {
       })
     )
   })
+
+  t.deepEquals(
+    progressArr,
+    [
+      { value: 11 + 0, done: false },
+      { value: 22 + 6, done: false },
+      { value: 44 + 0, done: false },
+      { value: 11, done: true }, // the log is now 1 block shorter
+    ],
+    'progress events'
+  )
 
   await run(log.close)()
   t.end()

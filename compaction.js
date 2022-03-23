@@ -4,6 +4,7 @@
 
 const RAF = require('polyraf')
 const fs = require('fs')
+const Obv = require('obz')
 const push = require('push-stream')
 const mutexify = require('mutexify')
 const debug = require('debug')('async-append-only-log')
@@ -117,6 +118,7 @@ function PersistentState(logFilename, blockSize) {
  */
 function Compaction(log, onDone) {
   const persistentState = PersistentState(log.filename, log.blockSize)
+  const since = Obv() // for the unshifted offset
 
   let compactedBlockIndex = -1
   let compactedBlockBuf = null
@@ -339,6 +341,7 @@ function Compaction(log, onDone) {
   }
 
   function compactNextBlock() {
+    since.set(unshiftedOffset)
     compactedBlockIndex += 1
     compactedBlockBuf = Buffer.alloc(log.blockSize)
     compactedOffset = compactedBlockIndex * log.blockSize
@@ -358,7 +361,9 @@ function Compaction(log, onDone) {
     })
   }
 
-  return {}
+  return {
+    since,
+  }
 }
 
 Compaction.stateFileExists = stateFileExists
