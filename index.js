@@ -16,6 +16,10 @@ const {
   nanOffsetErr,
   negativeOffsetErr,
   outOfBoundsOffsetErr,
+  delDuringCompactErr,
+  appendLargerThanBlockErr,
+  streamClosedErr,
+  appendTransactionWantsArrayErr,
 } = require('./errors')
 const Stream = require('./stream')
 const Record = require('./record')
@@ -237,7 +241,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
   function del(offset, cb) {
     if (compaction) {
-      cb(new Error('Cannot delete while compaction is in progress'))
+      cb(delDuringCompactErr())
       return
     }
     if (blocksToBeWritten.has(getBlockIndex(offset))) {
@@ -264,7 +268,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     if (typeof encodedData === 'string') encodedData = Buffer.from(encodedData)
 
     if (Record.size(encodedData) + EOB.SIZE > blockSize)
-      throw new Error('data larger than block size')
+      throw appendLargerThanBlockErr()
 
     if (hasNoSpaceFor(encodedData, nextOffsetInBlock)) {
       const nextBlockBuf = Buffer.alloc(blockSize)
@@ -304,9 +308,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
   function appendTransaction(dataArray, cb) {
     if (!Array.isArray(dataArray)) {
-      return cb(
-        new Error('appendTransaction expects first argument to be an array')
-      )
+      return cb(appendTransactionWantsArrayErr())
     }
     if (compaction) {
       waitingCompaction.push(() => appendTransaction(dataArray, cb))
@@ -324,7 +326,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
     size += EOB.SIZE
 
-    if (size > blockSize) return cb(new Error('data larger than block size'))
+    if (size > blockSize) return cb(appendLargerThanBlockErr())
 
     if (nextOffsetInBlock + size > blockSize) {
       // doesn't fit
@@ -452,8 +454,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
   function close(cb) {
     onDrain(function closeAfterHavingDrained() {
-      while (self.streams.length)
-        self.streams.shift().abort(new Error('async-append-only-log closed'))
+      while (self.streams.length) self.streams.shift().abort(streamClosedErr())
       raf.close(cb)
     })
   }
