@@ -178,13 +178,46 @@ tape('shift many blocks', async (t) => {
   })
 
   const progressArr = []
-  log.compactionSince((obj) => {
-    progressArr.push(obj)
+  log.compactionProgress((stats) => {
+    progressArr.push(stats)
   })
 
   const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
+
+  t.deepEquals(
+    progressArr,
+    [
+      {
+        startOffset: 11,
+        compactedOffset: 11,
+        unshiftedOffset: 11,
+        percent: 0,
+        done: false,
+      },
+      {
+        startOffset: 11,
+        compactedOffset: 22,
+        unshiftedOffset: 28,
+        percent: 0.4358974358974359,
+        done: false,
+      },
+      {
+        startOffset: 11,
+        compactedOffset: 33,
+        unshiftedOffset: 44,
+        percent: 0.8461538461538461,
+        done: false,
+      },
+      {
+        sizeDiff: 11, // the log is now 1 block shorter
+        percent: 1,
+        done: true,
+      },
+    ],
+    'progress events'
+  )
 
   await new Promise((resolve) => {
     log.stream({ offsets: false }).pipe(
@@ -208,17 +241,6 @@ tape('shift many blocks', async (t) => {
       })
     )
   })
-
-  t.deepEquals(
-    progressArr,
-    [
-      { value: 11 + 0, done: false },
-      { value: 22 + 6, done: false },
-      { value: 44 + 0, done: false },
-      { value: 11, done: true }, // the log is now 1 block shorter
-    ],
-    'progress events'
-  )
 
   await run(log.close)()
   t.end()

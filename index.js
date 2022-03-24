@@ -60,7 +60,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let nextOffsetInBlock = null
   const since = Obv() // offset of last written record
   let compaction = null
-  const compactionSince = Obv()
+  const compactionProgress = Obv()
   const waitingCompaction = []
 
   onLoad(function maybeResumeCompaction() {
@@ -442,12 +442,12 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       compaction = new Compaction(self, (err, sizeDiff) => {
         compaction = null
         if (err) return cb(err)
-        compactionSince.set({ value: sizeDiff, done: true })
+        compactionProgress.set({ sizeDiff, percent: 1, done: true })
         while (waitingCompaction.length) waitingCompaction.shift()()
         cb()
       })
-      compaction.since((unshiftedOffset) => {
-        compactionSince.set({ value: unshiftedOffset, done: false })
+      compaction.progress((stats) => {
+        compactionProgress.set({ ...stats, done: false })
       })
     })
   }
@@ -499,7 +499,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     onDrain: onLoad(onDrain),
     compact: onLoad(compact),
     since,
-    compactionSince,
+    compactionProgress,
     stream(opts) {
       const stream = new Stream(self, opts)
       self.streams.push(stream)

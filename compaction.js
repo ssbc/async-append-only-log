@@ -118,7 +118,8 @@ function PersistentState(logFilename, blockSize) {
  */
 function Compaction(log, onDone) {
   const persistentState = PersistentState(log.filename, log.blockSize)
-  const since = Obv() // for the unshifted offset
+  const progress = Obv() // for the unshifted offset
+  let startOffset = 0
 
   let compactedBlockIndex = -1
   let compactedBlockBuf = null
@@ -131,6 +132,7 @@ function Compaction(log, onDone) {
 
   loadPersistentState(function onCompactionStateLoaded2(err) {
     if (err) return onDone(err)
+    startOffset = compactedBlockIndex * log.blockSize
     compactedBlockIndex -= 1 // because it'll be incremented very soon
     compactNextBlock()
   })
@@ -341,15 +343,26 @@ function Compaction(log, onDone) {
   }
 
   function compactNextBlock() {
-    since.set(unshiftedOffset)
     compactedBlockIndex += 1
     compactedBlockBuf = Buffer.alloc(log.blockSize)
     compactedOffset = compactedBlockIndex * log.blockSize
     compactedBlockIdenticalToUnshifted = true
+    progress.set(calculateProgressStats())
     savePersistentState(function onCompactionStateSaved(err) {
       if (err) return onDone(err)
       continueCompactingBlock()
     })
+  }
+
+  function calculateProgressStats() {
+    const percent =
+      (unshiftedOffset - startOffset) / (log.since.value - startOffset)
+    return {
+      startOffset,
+      compactedOffset,
+      unshiftedOffset,
+      percent,
+    }
   }
 
   function stop() {
@@ -362,7 +375,7 @@ function Compaction(log, onDone) {
   }
 
   return {
-    since,
+    progress,
   }
 }
 
