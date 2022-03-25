@@ -132,7 +132,7 @@ tape('transaction fail', function (t) {
   db.appendTransaction([json1, json2], function (err, offsets) {
     t.equal(
       err.message,
-      'data larger than block size',
+      'Data to be appended is larger than block size',
       'fails on too much data'
     )
     db.close(t.end)

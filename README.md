@@ -178,6 +178,45 @@ log.since((offset) => {
 })
 ```
 
+### Compact the log (remove deleted records)
+
+```js
+log.compact((err) => {
+  // This callback will be called once, when the compaction is done.
+})
+```
+
+### Track progress of compactions
+
+As an [obz] observable:
+
+```js
+log.compactionProgress((progress) => {
+  console.log(progress)
+  // {
+  //   startOffset,
+  //   compactedOffset,
+  //   unshiftedOffset,
+  //   percent,
+  //   done,
+  //   sizeDiff,
+  // }
+})
+```
+
+Where
+
+- `startOffset`: the starting point for compaction. All offsets smaller than
+  this have been left untouched by the compaction algorithm.
+- `compactedOffset`: all records up until this point have been compacted so far.
+- `unshiftedOffset`: offset for the first record that hasn't yet been "moved"
+  to previous slots. Tracking this allows you to see the algorithm proceeding.
+- `percent`: a number between 0 and 1 to indicate the progress of compaction.
+- `done`: a boolean indicating whether compaction is ongoing (`false`) or done
+  (`true`).
+- `sizeDiff`: number of bytes freed after compaction is finished. Only available
+  if `done` is `true`.
+
 ### Close the log
 
 ```js

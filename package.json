@@ -36,6 +36,7 @@
     "nyc": "^15.1.0",
     "prettier": "^2.5.1",
     "pretty-quick": "^3.1.3",
+    "promisify-tuple": "^1.2.0",
     "pull-stream": "^3.6.14",
     "tap-arc": "^0.3.2",
     "tape": "^5.0.1",

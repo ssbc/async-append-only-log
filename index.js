@@ -16,9 +16,14 @@ const {
   nanOffsetErr,
   negativeOffsetErr,
   outOfBoundsOffsetErr,
+  delDuringCompactErr,
+  appendLargerThanBlockErr,
+  streamClosedErr,
+  appendTransactionWantsArrayErr,
 } = require('./errors')
 const Stream = require('./stream')
 const Record = require('./record')
+const Compaction = require('./compaction')
 
 /**
  * The "End of Block" is a special field used to mark the end of a block, and
@@ -54,6 +59,17 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let latestBlockIndex = null
   let nextOffsetInBlock = null
   const since = Obv() // offset of last written record
+  let compaction = null
+  const compactionProgress = Obv()
+  const waitingCompaction = []
+
+  onLoad(function maybeResumeCompaction() {
+    if (Compaction.stateFileExists(filename)) {
+      compact(function onCompactDone(err) {
+        if (err) throw err
+      })
+    }
+  })()
 
   raf.stat(function onRAFStatDone(err, stat) {
     if (err) debug('failed to stat ' + filename, err)
@@ -70,29 +86,32 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       while (waitingLoad.length) waitingLoad.shift()()
     } else {
       const blockStart = fileSize - blockSize
-      raf.read(blockStart, blockSize, function lastBlockLoaded(err, blockBuf) {
+      loadLatestBlock(blockStart, function onLoadedLatestBlock(err) {
         if (err) throw err
-
-        getLastGoodRecord(
-          blockBuf,
-          blockStart,
-          function gotLastGoodRecord(err, offsetInBlock) {
-            if (err) throw err
-
-            latestBlockBuf = blockBuf
-            latestBlockIndex = fileSize / blockSize - 1
-            const recSize = Record.readSize(blockBuf, offsetInBlock)
-            nextOffsetInBlock = offsetInBlock + recSize
-            since.set(blockStart + offsetInBlock)
-
-            debug('opened file, since: %d', since.value)
-
-            while (waitingLoad.length) waitingLoad.shift()()
-          }
-        )
+        debug('opened file, since: %d', since.value)
+        while (waitingLoad.length) waitingLoad.shift()()
       })
     }
   })
+
+  function loadLatestBlock(blockStart, cb) {
+    raf.read(blockStart, blockSize, function onRAFReadLastDone(err, blockBuf) {
+      if (err) return cb(err)
+      getLastGoodRecord(
+        blockBuf,
+        blockStart,
+        function gotLastGoodRecord(err, offsetInBlock) {
+          if (err) return cb(err)
+          latestBlockBuf = blockBuf
+          latestBlockIndex = blockStart / blockSize
+          const recSize = Record.readSize(blockBuf, offsetInBlock)
+          nextOffsetInBlock = offsetInBlock + recSize
+          since.set(blockStart + offsetInBlock)
+          cb()
+        }
+      )
+    })
+  }
 
   function getOffsetInBlock(offset) {
     return offset % blockSize
@@ -123,6 +142,21 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
             else unlock(cb, null, successValue)
           })
         } else unlock(cb, null, successValue)
+      })
+    })
+  }
+
+  function truncateWithFSync(newSize, cb) {
+    writeLock(function onWriteLockReleasedForTruncate(unlock) {
+      raf.del(newSize, Infinity, function onRAFDeleteDone(err) {
+        if (err) return unlock(cb, err)
+
+        if (raf.fd) {
+          fs.fsync(raf.fd, function onFSyncDoneForTruncate(err) {
+            if (err) unlock(cb, err)
+            else unlock(cb, null)
+          })
+        } else unlock(cb, null)
       })
     })
   }
@@ -170,11 +204,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function get(offset, cb) {
-    const logSize = latestBlockIndex * blockSize + nextOffsetInBlock - 1
+    const logSize = latestBlockIndex * blockSize + nextOffsetInBlock
     if (typeof offset !== 'number') return cb(nanOffsetErr(offset))
     if (isNaN(offset)) return cb(nanOffsetErr(offset))
     if (offset < 0) return cb(negativeOffsetErr(offset))
-    if (offset > logSize) return cb(outOfBoundsOffsetErr(offset, logSize))
+    if (offset >= logSize) return cb(outOfBoundsOffsetErr(offset, logSize))
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
@@ -188,7 +222,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   // -1: end of log
   //  0: need a new block
   // >0: next record within block
-  function getDataNextOffset(blockBuf, offset) {
+  function getDataNextOffset(blockBuf, offset, asRaw = false) {
     const offsetInBlock = getOffsetInBlock(offset)
     const [dataBuf, recSize] = Record.read(blockBuf, offsetInBlock)
     const nextLength = Record.readDataLength(blockBuf, offsetInBlock + recSize)
@@ -201,11 +235,15 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       nextOffset = offset + recSize
     }
 
-    if (isBufferZero(dataBuf)) return [nextOffset, null]
-    else return [nextOffset, codec.decode(dataBuf)]
+    if (isBufferZero(dataBuf)) return [nextOffset, null, recSize]
+    else return [nextOffset, asRaw ? dataBuf : codec.decode(dataBuf), recSize]
   }
 
   function del(offset, cb) {
+    if (compaction) {
+      cb(delDuringCompactErr())
+      return
+    }
     if (blocksToBeWritten.has(getBlockIndex(offset))) {
       onDrain(function delAfterDrained() {
         del(offset, cb)
@@ -221,15 +259,18 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
+  function hasNoSpaceFor(dataBuf, offsetInBlock) {
+    return offsetInBlock + Record.size(dataBuf) + EOB.SIZE > blockSize
+  }
+
   function appendSingle(data) {
     let encodedData = codec.encode(data)
     if (typeof encodedData === 'string') encodedData = Buffer.from(encodedData)
 
     if (Record.size(encodedData) + EOB.SIZE > blockSize)
-      throw new Error('data larger than block size')
+      throw appendLargerThanBlockErr()
 
-    if (nextOffsetInBlock + Record.size(encodedData) + EOB.SIZE > blockSize) {
-      // doesn't fit
+    if (hasNoSpaceFor(encodedData, nextOffsetInBlock)) {
       const nextBlockBuf = Buffer.alloc(blockSize)
       latestBlockBuf = nextBlockBuf
       latestBlockIndex += 1
@@ -251,6 +292,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function append(data, cb) {
+    if (compaction) {
+      waitingCompaction.push(() => append(data, cb))
+      return
+    }
+
     if (Array.isArray(data)) {
       let offset = 0
       for (let i = 0, length = data.length; i < length; ++i)
@@ -261,10 +307,13 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function appendTransaction(dataArray, cb) {
-    if (!Array.isArray(dataArray))
-      return cb(
-        new Error('appendTransaction expects first argument to be an array')
-      )
+    if (!Array.isArray(dataArray)) {
+      return cb(appendTransactionWantsArrayErr())
+    }
+    if (compaction) {
+      waitingCompaction.push(() => appendTransaction(dataArray, cb))
+      return
+    }
 
     let size = 0
     const encodedDataArray = dataArray.map((data) => {
@@ -277,7 +326,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
     size += EOB.SIZE
 
-    if (size > blockSize) return cb(new Error('data larger than block size'))
+    if (size > blockSize) return cb(appendLargerThanBlockErr())
 
     if (nextOffsetInBlock + size > blockSize) {
       // doesn't fit
@@ -359,10 +408,56 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
+  function overwrite(blockIndex, blockBuf, cb) {
+    cache.set(blockIndex, blockBuf)
+    const blockStart = blockIndex * blockSize
+    writeWithFSync(blockStart, blockBuf, null, cb)
+  }
+
+  function truncate(newLatestBlockIndex, cb) {
+    if (newLatestBlockIndex >= latestBlockIndex) return cb(null, 0)
+    const size = (latestBlockIndex + 1) * blockSize
+    const newSize = (newLatestBlockIndex + 1) * blockSize
+    for (let i = newLatestBlockIndex + 1; i < latestBlockIndex; ++i) {
+      cache.remove(i)
+    }
+    truncateWithFSync(newSize, function onTruncateWithFSyncDone(err) {
+      if (err) return cb(err)
+      const blockStart = newSize - blockSize
+      loadLatestBlock(blockStart, function onTruncateLoadedLatestBlock(err) {
+        if (err) return cb(err)
+        const sizeDiff = size - newSize
+        cb(null, sizeDiff)
+      })
+    })
+  }
+
+  function compact(cb) {
+    if (compaction) {
+      debug('compaction already in progress')
+      waitingCompaction.push(cb)
+      return
+    }
+    onDrain(function startCompactAfterDrain() {
+      compaction = new Compaction(self, (err, sizeDiff) => {
+        compaction = null
+        if (err) return cb(err)
+        compactionProgress.set({ sizeDiff, percent: 1, done: true })
+        for (let i = 0, n = waitingCompaction.length; i < n; ++i) {
+          waitingCompaction[i]()
+        }
+        waitingCompaction.length = 0
+        cb()
+      })
+      compaction.progress((stats) => {
+        compactionProgress.set({ ...stats, done: false })
+      })
+    })
+  }
+
   function close(cb) {
     onDrain(function closeAfterHavingDrained() {
-      while (self.streams.length)
-        self.streams.shift().abort(new Error('async-append-only-log closed'))
+      while (self.streams.length) self.streams.shift().abort(streamClosedErr())
       raf.close(cb)
     })
   }
@@ -375,6 +470,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function onDrain(fn) {
+    if (compaction) {
+      waitingCompaction.push(fn)
+      return
+    }
     if (blocksToBeWritten.size === 0 && writingBlockIndex === -1) fn()
     else {
       const latestBlockIndex =
@@ -401,16 +500,22 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     appendTransaction: onLoad(appendTransaction),
     close: onLoad(close),
     onDrain: onLoad(onDrain),
+    compact: onLoad(compact),
     since,
+    compactionProgress,
     stream(opts) {
       const stream = new Stream(self, opts)
       self.streams.push(stream)
       return stream
     },
 
-    // Internals:
+    // Internals needed by ./compaction.js:
     filename,
-    // Internals needed for ./stream.js:
+    blockSize,
+    overwrite,
+    truncate,
+    hasNoSpaceFor,
+    // Internals needed by ./stream.js:
     onLoad,
     getNextBlockStart,
     getDataNextOffset,

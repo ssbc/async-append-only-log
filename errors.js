@@ -34,10 +34,30 @@ function deletedRecordErr() {
   return new ErrorWithCode('Record has been deleted', 'ERR_AAOL_DELETED_RECORD')
 }
 
+function delDuringCompactErr() {
+  return new Error('Cannot delete while compaction is in progress')
+}
+
+function appendLargerThanBlockErr() {
+  return new Error('Data to be appended is larger than block size')
+}
+
+function streamClosedErr() {
+  return new Error('async-append-only-log stream is closed')
+}
+
+function appendTransactionWantsArrayErr() {
+  return new Error('appendTransaction expects first argument to be an array')
+}
+
 module.exports = {
   ErrorWithCode,
   nanOffsetErr,
   negativeOffsetErr,
   outOfBoundsOffsetErr,
   deletedRecordErr,
+  delDuringCompactErr,
+  appendLargerThanBlockErr,
+  streamClosedErr,
+  appendTransactionWantsArrayErr,
 }
