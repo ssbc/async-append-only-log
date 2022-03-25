@@ -443,7 +443,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
         compaction = null
         if (err) return cb(err)
         compactionProgress.set({ sizeDiff, percent: 1, done: true })
-        while (waitingCompaction.length) waitingCompaction.shift()()
+        for (let i = 0, n = waitingCompaction.length; i < n; ++i) {
+          waitingCompaction[i]()
+        }
+        waitingCompaction.length = 0
         cb()
       })
       compaction.progress((stats) => {
