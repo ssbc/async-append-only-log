@@ -62,7 +62,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let nextOffsetInBlock = null
   const since = Obv() // offset of last written record
   let compaction = null
-  const compactionProgress = Obv()
+  const compactionProgress = Obv().set(
+    Compaction.stateFileExists(filename)
+      ? { done: false }
+      : { sizeDiff: 0, percent: 1, done: true }
+  )
   const waitingCompaction = []
 
   onLoad(function maybeResumeCompaction() {
