@@ -41,11 +41,18 @@ function write(blockBuf, offsetInBlock, dataBuf) {
   dataBuf.copy(blockBuf, offsetInBlock + HEADER_SIZE) // write dataBuf
 }
 
-function overwriteWithZeroes(blockBuf, offsetInBlock) {
-  const dataLength = readDataLength(blockBuf, offsetInBlock)
-  const dataStart = offsetInBlock + HEADER_SIZE
-  const dataEnd = dataStart + dataLength
-  blockBuf.fill(0, dataStart, dataEnd)
+function overwriteWithZeroes(blockBuf, offsetInBlock, newLength = 0) {
+  if (newLength) {
+    blockBuf.writeUInt16LE(newLength, offsetInBlock) // overwrite dataLength
+    const dataStart = offsetInBlock + HEADER_SIZE
+    const dataEnd = dataStart + newLength
+    blockBuf.fill(0, dataStart, dataEnd) // overwrite dataBuf
+  } else {
+    const dataLength = readDataLength(blockBuf, offsetInBlock)
+    const dataStart = offsetInBlock + HEADER_SIZE
+    const dataEnd = dataStart + dataLength
+    blockBuf.fill(0, dataStart, dataEnd) // overwrite dataBuf
+  }
 }
 
 module.exports = {

@@ -5,6 +5,7 @@
 var tape = require('tape')
 var fs = require('fs')
 var pify = require('util').promisify
+var run = require('promisify-tuple')
 var push = require('push-stream')
 var Log = require('../')
 
@@ -197,5 +198,48 @@ tape('delete many', async (t) => {
   })
 
   await pify(log.close)()
+  t.end()
+})
+
+tape('merge consecutive deletes', async function (t) {
+  var file = '/tmp/test_del_merge_consecutives.log'
+  try {
+    fs.unlinkSync(file)
+  } catch (_) {}
+  var log = Log(file, { blockSize: 2 * 1024 })
+
+  function b(str) {
+    return Buffer.from(str.replace(/ +/g, ''), 'hex')
+  }
+
+  const [, offset1] = await run(log.append)(Buffer.from('abc')) //msg1)
+  const [, offset2] = await run(log.append)(Buffer.from('def')) //msg2)
+  const [, offset3] = await run(log.append)(Buffer.from('ghi')) //msg3)
+  await run(log.onDrain)()
+  const [errB1, blockBefore] = await run(log.getBlock)(0)
+  t.error(errB1)
+  const expectedBefore = b('0300 61 62 63 0300 64 65 66 0300 67 68 69')
+  const actualBefore = blockBefore.slice(0, expectedBefore.length)
+  console.log(expectedBefore)
+  console.log(actualBefore)
+  t.equals(actualBefore.compare(expectedBefore), 0, 'block buf looks okay')
+
+  const [err1] = await run(log.del)(offset1)
+  t.error(err1)
+  const [err2] = await run(log.del)(offset2)
+  t.error(err2)
+  const [err3] = await run(log.del)(offset3)
+  t.error(err3)
+  await run(log.onDrain)()
+
+  const [errB2, blockAfter] = await run(log.getBlock)(0)
+  t.error(errB2)
+  const expectedAfter = b('0d00 00 00 00 00 00 00 00 00 00 00 00 00 00')
+  const actualAfter = blockAfter.slice(0, expectedAfter.length)
+  console.log(expectedAfter)
+  console.log(actualAfter)
+  t.equals(actualAfter.compare(expectedAfter), 0, 'block buf looks okay')
+
+  await run(log.close)()
   t.end()
 })

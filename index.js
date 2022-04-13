@@ -268,9 +268,48 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       if (err) return cb(err)
       const actualBlockBuf = blocksWithDeletables.get(blockIndex) || blockBuf
       Record.overwriteWithZeroes(actualBlockBuf, getOffsetInBlock(offset))
+      mergeDeletedRecords(actualBlockBuf)
       blocksWithDeletables.set(blockIndex, actualBlockBuf)
       scheduleFlushDelete()
       cb()
+    }
+  }
+
+  function mergeDeletedRecords(blockBuf) {
+    let offsetInBlock = 0
+    let eobReached = false
+    while (offsetInBlock < blockSize) {
+      const [dataBuf, recSize] = Record.read(blockBuf, offsetInBlock)
+      const length = Record.readDataLength(blockBuf, offsetInBlock)
+      if (length === EOB.asNumber) return
+      if (isBufferZero(dataBuf)) {
+        let newLength = length
+        let newRecSize = recSize
+        let nextOffsetInBlock = offsetInBlock + recSize
+        while (true) {
+          const nextLength = Record.readDataLength(blockBuf, nextOffsetInBlock)
+          if (nextLength === EOB.asNumber) {
+            eobReached = true
+            break
+          }
+          const [nextDataBuf, nextRecSize] = Record.read(
+            blockBuf,
+            nextOffsetInBlock
+          )
+          if (isBufferZero(nextDataBuf)) {
+            newLength += nextRecSize
+            newRecSize += nextRecSize
+            nextOffsetInBlock += nextRecSize
+          } else break
+        }
+        if (newLength !== length) {
+          Record.overwriteWithZeroes(blockBuf, offsetInBlock, newLength)
+        }
+        if (eobReached) return
+        else offsetInBlock += newRecSize
+      } else {
+        offsetInBlock += recSize
+      }
     }
   }
 
