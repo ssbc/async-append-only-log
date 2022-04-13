@@ -26,7 +26,7 @@ log.since((maxOffset) => {
       },
       () => {
         console.log('recordCount', recordCount)
-        const deleteCount = Math.ceil(recordCount * 0.25)
+        const deleteCount = Math.ceil(recordCount * 0.35)
         console.log('deleteCount', deleteCount)
 
         const deletableSeqs = new Map()
@@ -43,8 +43,9 @@ log.since((maxOffset) => {
           (sink = {
             paused: false,
             write(offset) {
-              if (deletableSeqs.has(seq)) {
-                deletableSeqs.set(seq, offset)
+              if (offset / maxOffset < 0.4) {
+              // if (deletableSeqs.has(seq)) {
+                //deletableSeqs.set(seq, offset)
                 sink.paused = true
                 // console.time('delete ' + offset)
                 log.del(offset, (err) => {

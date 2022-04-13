@@ -27,7 +27,7 @@ log.since((maxOffset) => {
       },
       () => {
         console.log('recordCount', recordCount)
-        const deleteCount = Math.ceil(recordCount * 0.05)
+        const deleteCount = Math.ceil(recordCount * 0.8)
         console.log('deleteCount', deleteCount)
 
         const deletableSeqs = new Map()
@@ -51,17 +51,17 @@ log.since((maxOffset) => {
                   if (err) throw err
                   // sink.paused = false
                   // sink.source.resume()
-                  if (Math.random() < 0.04)
-                    console.log(
-                      'progress',
-                      ((100 * s) / recordCount).toFixed(2) + '%'
-                    )
+                  // if (Math.random() < 0.04) {
+                  // console.log(
+                  //   'progress',
+                  //   ((100 * s) / recordCount).toFixed(2) + '%'
+                  // )
+                  // }
                 })
               }
               seq += 1
             },
-            end(err) {
-            },
+            end(err) {},
           })
         )
       }
