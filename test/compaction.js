@@ -184,13 +184,13 @@ tape('shift many blocks', async (t) => {
             // block 0
             [0x11, 0x22, 0x33],
             // block 1
-            [0x44, null, null],
+            [0x44, null, 0x77],
             // block 2
-            [0x77, 0x88, 0x99],
+            [0x88, 0x99, 0xaa],
             // block 3
-            [0xaa, null, 0xcc],
+            [null, 0xcc, 0xdd],
             // block 4
-            [0xdd, 0xee, 0xff],
+            [0xee, 0xff],
           ].flat(),
           'log has 5 blocks and some holes'
         )
@@ -304,7 +304,7 @@ tape('cannot read truncated regions of the log', async (t) => {
             // block 0
             [0x11, 0x22, 0x33],
             // block 1
-            [0x44, null, null],
+            [0x44, null],
             // block 2
             [null, 0x88, 0x99],
           ].flat(),

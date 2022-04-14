@@ -268,7 +268,6 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       if (err) return cb(err)
       const actualBlockBuf = blocksWithDeletables.get(blockIndex) || blockBuf
       Record.overwriteWithZeroes(actualBlockBuf, getOffsetInBlock(offset))
-      mergeDeletedRecords(actualBlockBuf)
       blocksWithDeletables.set(blockIndex, actualBlockBuf)
       scheduleFlushDelete()
       cb()
@@ -331,6 +330,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     blocksWithDeletables.delete(blockIndex)
     blocksWithDeletables.set(-1, null) // indicate that flush is active
 
+    mergeDeletedRecords(blockBuf)
     writeWithFSync(blockStart, blockBuf, null, function flushedDelete(err) {
       blocksWithDeletables.delete(-1) // indicate that flush is not active
       if (err) {

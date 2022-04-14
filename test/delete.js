@@ -230,7 +230,7 @@ tape('merge consecutive deletes', async function (t) {
   t.error(err2)
   const [err3] = await run(log.del)(offset3)
   t.error(err3)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
 
   const [errB2, blockAfter] = await run(log.getBlock)(0)
   t.error(errB2)
