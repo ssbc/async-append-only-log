@@ -262,8 +262,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     }
     function gotBlockForDelete(err, blockBuf) {
       if (err) return cb(err)
-      Record.overwriteWithZeroes(blockBuf, getOffsetInBlock(offset))
-      blocksWithDeletables.set(blockIndex, blockBuf)
+      const actualBlockBuf = blocksWithDeletables.get(blockIndex) || blockBuf
+      Record.overwriteWithZeroes(actualBlockBuf, getOffsetInBlock(offset))
+      blocksWithDeletables.set(blockIndex, actualBlockBuf)
       scheduleFlushDelete()
       cb()
     }
