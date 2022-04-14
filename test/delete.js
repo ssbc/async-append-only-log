@@ -170,8 +170,6 @@ tape('delete many', async (t) => {
 
   await pify(log.onDrain)()
 
-  await pify(setTimeout)(2000)
-
   const logDel = pify(log.del)
   console.time('delete ' + TOTAL)
   for (let i = 0; i < TOTAL; i += 2) {
@@ -181,6 +179,22 @@ tape('delete many', async (t) => {
   t.pass('deleted messages')
 
   await pify(log.onDeletesFlushed)()
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error on streaming')
+        for (let i = 0; i < TOTAL; i += 1) {
+          if (i % 2 === 0) {
+            if (ary[i] !== null) t.fail('record '+ i + ' should be deleted')
+          } else {
+            if (ary[i] === null) t.fail('record '+ i + ' should be present')
+          }
+        }
+        resolve()
+      })
+    )
+  })
 
   await pify(log.close)()
   t.end()
