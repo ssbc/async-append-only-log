@@ -42,7 +42,7 @@ const DEFAULT_WRITE_TIMEOUT = 250
 const DEFAULT_VALIDATE = () => true
 
 module.exports = function AsyncAppendOnlyLog(filename, opts) {
-  const cache = new Cache(1024) // this is potentially 65mb!
+  const cache = new Cache(1024) // This is potentially 64 MiB!
   const raf = RAF(filename)
   const blockSize = (opts && opts.blockSize) || DEFAULT_BLOCK_SIZE
   const codec = (opts && opts.codec) || DEFAULT_CODEC
@@ -52,7 +52,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
   const waitingLoad = []
   const waitingDrain = new Map() // blockIndex -> []
+  const waitingFlushDelete = []
   const blocksToBeWritten = new Map() // blockIndex -> { blockBuf, offset }
+  const blocksWithDeletables = new Map() // blockIndex -> blockBuf
   let writingBlockIndex = -1
 
   let latestBlockBuf = null
@@ -244,7 +246,8 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       cb(delDuringCompactErr())
       return
     }
-    if (blocksToBeWritten.has(getBlockIndex(offset))) {
+    const blockIndex = getBlockIndex(offset)
+    if (blocksToBeWritten.has(blockIndex)) {
       onDrain(function delAfterDrained() {
         del(offset, cb)
       })
@@ -253,14 +256,44 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     getBlock(offset, function gotBlockForDelete(err, blockBuf) {
       if (err) return cb(err)
       Record.overwriteWithZeroes(blockBuf, getOffsetInBlock(offset))
-      // we write directly here to make normal write simpler
-      const blockStart = getBlockStart(offset)
-      writeWithFSync(blockStart, blockBuf, null, cb)
+      blocksWithDeletables.set(blockIndex, blockBuf)
+      scheduleFlushDelete()
+      cb()
     })
   }
 
   function hasNoSpaceFor(dataBuf, offsetInBlock) {
     return offsetInBlock + Record.size(dataBuf) + EOB.SIZE > blockSize
+  }
+
+  const scheduleFlushDelete = debounce(flushDelete, writeTimeout)
+
+  function flushDelete() {
+    if (blocksWithDeletables.size === 0) {
+      for (const cb of waitingFlushDelete) cb()
+      waitingFlushDelete.length = 0
+      return
+    }
+    const blockIndex = blocksWithDeletables.keys().next().value
+    const blockStart = blockIndex * blockSize
+    const blockBuf = blocksWithDeletables.get(blockIndex)
+    blocksWithDeletables.delete(blockIndex)
+    blocksWithDeletables.set(-1, null) // indicate that flush is active
+
+    writeWithFSync(blockStart, blockBuf, null, function flushedDelete(err) {
+      blocksWithDeletables.delete(-1) // indicate that flush is not active
+      if (err) {
+        for (const cb of waitingFlushDelete) cb(err)
+        waitingFlushDelete.length = 0
+        return
+      }
+      flushDelete() // next
+    })
+  }
+
+  function onDeletesFlushed(cb) {
+    if (blocksWithDeletables.size === 0) cb()
+    else waitingFlushDelete.push(cb)
   }
 
   function appendSingle(data) {
@@ -439,26 +472,29 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       return
     }
     onDrain(function startCompactAfterDrain() {
-      compaction = new Compaction(self, (err, sizeDiff) => {
-        compaction = null
-        if (err) return cb(err)
-        compactionProgress.set({ sizeDiff, percent: 1, done: true })
-        for (let i = 0, n = waitingCompaction.length; i < n; ++i) {
-          waitingCompaction[i]()
-        }
-        waitingCompaction.length = 0
-        cb()
-      })
-      compaction.progress((stats) => {
-        compactionProgress.set({ ...stats, done: false })
+      onDeletesFlushed(function startCompactAfterDeletes() {
+        compaction = new Compaction(self, (err, sizeDiff) => {
+          compaction = null
+          if (err) return cb(err)
+          compactionProgress.set({ sizeDiff, percent: 1, done: true })
+          for (const callback of waitingCompaction) callback()
+          waitingCompaction.length = 0
+          cb()
+        })
+        compaction.progress((stats) => {
+          compactionProgress.set({ ...stats, done: false })
+        })
       })
     })
   }
 
   function close(cb) {
     onDrain(function closeAfterHavingDrained() {
-      while (self.streams.length) self.streams.shift().abort(streamClosedErr())
-      raf.close(cb)
+      onDeletesFlushed(function closeAfterDeletesFlushed() {
+        for (const stream of self.streams) stream.abort(streamClosedErr())
+        self.streams = []
+        raf.close(cb)
+      })
     })
   }
 
@@ -500,6 +536,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     appendTransaction: onLoad(appendTransaction),
     close: onLoad(close),
     onDrain: onLoad(onDrain),
+    onDeletesFlushed: onLoad(onDeletesFlushed),
     compact: onLoad(compact),
     since,
     compactionProgress,

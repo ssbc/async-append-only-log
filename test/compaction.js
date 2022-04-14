@@ -57,7 +57,7 @@ tape('delete first record, compact, stream', async (t) => {
   t.pass('append two records')
 
   await run(log.del)(offset1)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('delete first record')
 
   const [err] = await run(log.compact)()
@@ -93,7 +93,7 @@ tape('delete last record, compact, stream', async (t) => {
   t.pass('append three records')
 
   await run(log.del)(offset3)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('delete third record')
 
   await new Promise((resolve) => {
@@ -150,7 +150,7 @@ tape('shift many blocks', async (t) => {
   await run(log.del)(11 + 3)
   await run(log.del)(11 + 6)
   await run(log.del)(33 + 3)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('deleted some records in the middle')
 
   await new Promise((resolve) => {
@@ -265,7 +265,7 @@ tape('cannot read truncated regions of the log', async (t) => {
   await run(log.del)(11 + 3)
   await run(log.del)(11 + 6)
   await run(log.del)(22 + 0)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('delete some records')
 
   await new Promise((resolve) => {
@@ -340,7 +340,7 @@ tape('compact handling last deleted record on last block', async (t) => {
 
   await run(log.del)(11 + 3)
   await run(log.del)(22 + 6)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('deleted some records in the middle')
 
   await new Promise((resolve) => {
@@ -413,7 +413,7 @@ tape('compact handling holes of different sizes', async (t) => {
 
   await run(log.del)(3)
   await run(log.del)(14 + 0)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('deleted some records in the middle')
 
   await new Promise((resolve) => {
@@ -606,7 +606,7 @@ tape('append during compaction is postponed', async (t) => {
   t.pass('append two records')
 
   await run(log.del)(offset1)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('delete first record')
 
   let appendDone = false
@@ -651,7 +651,7 @@ tape('appendTransaction during compaction is postponed', async (t) => {
   t.pass('append two records')
 
   await run(log.del)(offset1)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('delete first record')
 
   let appendTransactionDone = false
@@ -695,17 +695,27 @@ tape('del during compaction is forbidden', async (t) => {
   t.pass('append two records')
 
   await run(log.del)(offset1)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('delete first record')
 
+  let compactDone = false
   log.compact((err) => {
     t.error(err, 'no error when compacting')
+    compactDone = true
   })
   const [err, offset3] = await run(log.del)(10)
   t.ok(err, 'del is forbidden')
   t.match(err.message, /Cannot delete/)
   t.notOk(offset3)
-  await run(log.onDrain)()
+
+  await new Promise((resolve) => {
+    const interval = setInterval(() => {
+      if (compactDone) {
+        clearInterval(interval)
+        resolve()
+      }
+    }, 100)
+  })
 
   await new Promise((resolve) => {
     log.stream({ offsets: false }).pipe(
@@ -734,7 +744,7 @@ tape('there can only be one compact at a time', async (t) => {
   t.pass('append two records')
 
   await run(log.del)(offset1)
-  await run(log.onDrain)()
+  await run(log.onDeletesFlushed)()
   t.pass('delete first record')
 
   let compact1Done = false
