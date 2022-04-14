@@ -4,6 +4,7 @@
 
 var tape = require('tape')
 var fs = require('fs')
+var pify = require('util').promisify
 var push = require('push-stream')
 var Log = require('../')
 
@@ -47,12 +48,14 @@ tape('simple', function (t) {
               db.del(offset3, function (err) {
                 t.error(err)
 
-                db.get(offset3, function (err, deletedBuf) {
-                  t.ok(err)
-                  t.equal(err.message, 'Record has been deleted')
-                  t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
-                  // write changes
-                  db.onDrain(t.end)
+                db.onDeletesFlushed(() => {
+                  db.get(offset3, function (err, deletedBuf) {
+                    t.ok(err)
+                    t.equal(err.message, 'Record has been deleted')
+                    t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
+                    // write changes
+                    db.onDrain(t.end)
+                  })
                 })
               })
             })
@@ -87,12 +90,14 @@ tape('simple reread', function (t) {
         db.del(offset2, function (err) {
           t.error(err)
 
-          db.get(offset2, function (err, deletedBuf) {
-            t.ok(err)
-            t.equal(err.message, 'Record has been deleted')
-            t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
-            // write changes
-            db.close(t.end)
+          db.onDeletesFlushed(() => {
+            db.get(offset2, function (err, deletedBuf) {
+              t.ok(err)
+              t.equal(err.message, 'Record has been deleted')
+              t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
+              // write changes
+              db.close(t.end)
+            })
           })
         })
       })
@@ -109,11 +114,12 @@ tape('simple reread 2', function (t) {
     t.equal(buf.toString(), msg1.toString())
 
     db.get(msg1.length + 2, function (err, deletedBuf) {
+      console.log(deletedBuf)
       t.ok(err)
       t.equal(err.message, 'Record has been deleted')
       t.equal(err.code, 'ERR_AAOL_DELETED_RECORD')
 
-      t.end()
+      db.close(t.end)
     })
   })
 })
@@ -131,15 +137,65 @@ tape('stream delete', function (t) {
       db.del(offset1, function (err) {
         t.error(err)
         db.onDrain(() => {
-          db.stream({ offsets: false }).pipe(
-            push.collect((err, ary) => {
-              t.notOk(err)
-              t.deepEqual(ary, [null, buf2])
-              t.end()
-            })
-          )
+          db.onDeletesFlushed(() => {
+            db.stream({ offsets: false }).pipe(
+              push.collect((err, ary) => {
+                t.notOk(err)
+                t.deepEqual(ary, [null, buf2])
+                db.close(t.end)
+              })
+            )
+          })
         })
       })
     })
   })
+})
+
+tape('delete many', async (t) => {
+  t.timeoutAfter(60e3)
+  const file = '/tmp/aaol-test-delete-many' + Date.now() + '.log'
+  const log = Log(file, { blockSize: 64 * 1024 })
+
+  const TOTAL = 100000
+  const offsets = []
+  const logAppend = pify(log.append)
+  console.time('append ' + TOTAL)
+  for (let i = 0; i < TOTAL; i += 1) {
+    const offset = await logAppend(Buffer.from(`hello ${i}`))
+    offsets.push(offset)
+  }
+  t.pass('appended records')
+  console.timeEnd('append ' + TOTAL)
+
+  await pify(log.onDrain)()
+
+  const logDel = pify(log.del)
+  console.time('delete ' + TOTAL)
+  for (let i = 0; i < TOTAL; i += 2) {
+    await logDel(offsets[i])
+  }
+  console.timeEnd('delete ' + TOTAL)
+  t.pass('deleted messages')
+
+  await pify(log.onDeletesFlushed)()
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error on streaming')
+        for (let i = 0; i < TOTAL; i += 1) {
+          if (i % 2 === 0) {
+            if (ary[i] !== null) t.fail('record '+ i + ' should be deleted')
+          } else {
+            if (ary[i] === null) t.fail('record '+ i + ' should be present')
+          }
+        }
+        resolve()
+      })
+    )
+  })
+
+  await pify(log.close)()
+  t.end()
 })

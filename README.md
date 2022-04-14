@@ -117,6 +117,14 @@ log.appendTransaction([item1, item2, item3], (err, offset3) => {
 })
 ```
 
+### Wait for all ongoing appends to be flushed to disk
+
+```js
+log.onDrain(() => {
+  // ...
+})
+```
+
 ### Scan all records as a `push-stream`
 
 ```js
@@ -160,10 +168,10 @@ log.del(offset, (err) => {
 })
 ```
 
-### Wait for all ongoing writes to complete
+### Wait for all ongoing deletes to be flushed to disk
 
 ```js
-log.onDrain(() => {
+log.onDeletesFlushed(() => {
   // ...
 })
 ```
