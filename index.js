@@ -253,13 +253,20 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       })
       return
     }
-    getBlock(offset, function gotBlockForDelete(err, blockBuf) {
+
+    if (blocksWithDeletables.has(blockIndex)) {
+      const blockBuf = blocksWithDeletables.get(blockIndex)
+      gotBlockForDelete(null, blockBuf)
+    } else {
+      getBlock(offset, gotBlockForDelete)
+    }
+    function gotBlockForDelete(err, blockBuf) {
       if (err) return cb(err)
       Record.overwriteWithZeroes(blockBuf, getOffsetInBlock(offset))
       blocksWithDeletables.set(blockIndex, blockBuf)
       scheduleFlushDelete()
       cb()
-    })
+    }
   }
 
   function hasNoSpaceFor(dataBuf, offsetInBlock) {
