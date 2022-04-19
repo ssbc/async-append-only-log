@@ -481,6 +481,8 @@ tape('recovers from crash just after persisting state', async (t) => {
   await run(log.close)()
   t.pass('suppose compaction was in progress: [0x22, 0x33] and [0x33, 0x44]')
 
+  const version = [1, 0, 0, 0] // uint32LE
+  const truncateBlockIndex = [255, 255, 255, 255] //uint32LE
   const compactingBlockIndex = [1, 0, 0, 0] // uint32LE
   const unshiftedOffset = [9 + 3, 0, 0, 0] // uint32LE
   const unshiftedBlock = [
@@ -491,6 +493,8 @@ tape('recovers from crash just after persisting state', async (t) => {
   await fs.promises.writeFile(
     file + '.compaction',
     Buffer.from([
+      ...version,
+      ...truncateBlockIndex,
       ...compactingBlockIndex,
       ...unshiftedOffset,
       ...unshiftedBlock,
@@ -547,6 +551,8 @@ tape('recovers from crash just after persisting block', async (t) => {
   await run(log.close)()
   t.pass('suppose compaction was in progress: [0x22, 0x33] and [0x33, 0x44]')
 
+  const version = [1, 0, 0, 0] // uint32LE
+  const truncateBlockIndex = [255, 255, 255, 255] //uint32LE
   const compactingBlockIndex = [0, 0, 0, 0] // uint32LE
   const unshiftedOffset = [0, 0, 0, 0] // uint32LE
   const unshiftedBlock = [
@@ -557,6 +563,8 @@ tape('recovers from crash just after persisting block', async (t) => {
   await fs.promises.writeFile(
     file + '.compaction',
     Buffer.from([
+      ...version,
+      ...truncateBlockIndex,
       ...compactingBlockIndex,
       ...unshiftedOffset,
       ...unshiftedBlock,
@@ -582,6 +590,71 @@ tape('recovers from crash just after persisting block', async (t) => {
             [0x44],
           ].flat(),
           'log has 2 blocks'
+        )
+        resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
+tape('restarts from crash just before truncating log', async (t) => {
+  t.timeoutAfter(6000)
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  let log = Log(file, { blockSize: 9, codec: hexCodec })
+  t.pass('suppose the log has blockSize 9')
+  t.pass('suppose we had blocks: [null, 0x22], [null, 0x44] and [0x55, 0x66]')
+
+  await run(log.append)(
+    [
+      // block 0
+      [0x22, 0x44], // offsets: 0, 3
+      // block 1
+      [0x55, 0x66], // offsets: 9+0, 9+3
+      // block 2
+      [0x55, 0x66], // offsets: 18+0, 18+3
+    ].flat()
+  )
+  await run(log.close)()
+  t.pass('suppose compaction ready: [0x22, 0x44], [0x55, 0x66], [0x55, 0x66]')
+
+  const version = [1, 0, 0, 0] // uint32LE
+  const truncateBlockIndex = [1, 0, 0, 0] //uint32LE
+  const compactingBlockIndex = [0, 0, 0, 0] // uint32LE
+  const unshiftedOffset = [0, 0, 0, 0] // uint32LE
+  const unshiftedBlock = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+  await fs.promises.writeFile(
+    file + '.compaction',
+    Buffer.from([
+      ...version,
+      ...truncateBlockIndex,
+      ...compactingBlockIndex,
+      ...unshiftedOffset,
+      ...unshiftedBlock,
+    ])
+  )
+  t.pass('suppose compaction file: truncateBlockIndex 1')
+
+  log = Log(file, { blockSize: 9, codec: hexCodec })
+  t.pass('start log, compaction should autostart')
+
+  await timer(1000)
+
+  await new Promise((resolve) => {
+    log.stream({ offsets: false }).pipe(
+      push.collect((err, ary) => {
+        t.error(err, 'no error when streaming compacted log')
+        t.deepEqual(
+          ary,
+          [
+            // block 0
+            [0x22, 0x44],
+            // block 1
+            [0x55, 0x66],
+          ].flat(),
+          'truncated to: [0x22, 0x44], [0x55, 0x66]'
         )
         resolve()
       })
