@@ -18,22 +18,31 @@ function stateFileExists(logFilename) {
   return fs.existsSync(getStateFilename(logFilename))
 }
 
+const NO_TRUNCATE = 0xffffffff
+
 /**
  * This file has state describing the continuation of the compaction algorithm.
  *
- * - bytes 0..3: UInt32LE for the blockIndex to-be-compacted
- * - bytes 4..7: UInt32LE for the 1st unshifted record's offset
- * - bytes 8..(8+blockSize-1): blockBuf containing the 1st unshifted record
+ * - bytes 0..3: UInt32LE for the version of this file format
+ *               smallest version is 1.
+ * - bytes 4..7: UInt32LE for block index where to perform truncation
+ *               where 0xFFFFFFFF means no truncation to-be-done yet
+ * - bytes 8..11: UInt32LE for the blockIndex to-be-compacted
+ * - bytes 12..15: UInt32LE for the 1st unshifted record's offset
+ * - bytes 16..(16+blockSize-1): blockBuf containing the 1st unshifted record
  */
 function PersistentState(logFilename, blockSize) {
   const raf = RAF(getStateFilename(logFilename))
   const writeLock = mutexify()
+  const stateFileSize = 4 + 4 + 4 + 4 + blockSize
 
   function load(cb) {
     raf.stat(function onRAFStatDone(err, stat) {
       const fileSize = !err && stat ? stat.size : -1
       if (fileSize <= 0) {
         const state = {
+          version: 1,
+          truncateBlockIndex: NO_TRUNCATE,
           compactedBlockIndex: 0,
           unshiftedOffset: 0,
           unshiftedBlockBuffer: null,
@@ -41,13 +50,14 @@ function PersistentState(logFilename, blockSize) {
         }
         cb(null, state)
       } else {
-        const stateFileSize = 4 + 4 + blockSize
         raf.read(0, stateFileSize, function onFirstRAFReadDone(err, buf) {
           if (err) return cb(err)
           const state = {
-            compactedBlockIndex: buf.readUInt32LE(0),
-            unshiftedOffset: buf.readUInt32LE(4),
-            unshiftedBlockBuf: buf.slice(8),
+            version: buf.readUInt32LE(0),
+            truncateBlockIndex: buf.readUInt32LE(4),
+            compactedBlockIndex: buf.readUInt32LE(8),
+            unshiftedOffset: buf.readUInt32LE(12),
+            unshiftedBlockBuf: buf.slice(16),
             initial: false,
           }
           cb(null, state)
@@ -57,10 +67,12 @@ function PersistentState(logFilename, blockSize) {
   }
 
   function save(state, cb) {
-    const buf = Buffer.alloc(4 + 4 + blockSize)
-    buf.writeUInt32LE(state.compactedBlockIndex, 0)
-    buf.writeUInt32LE(state.unshiftedOffset, 4)
-    state.unshiftedBlockBuf.copy(buf, 8)
+    const buf = Buffer.alloc(stateFileSize)
+    buf.writeUInt32LE(state.version, 0)
+    buf.writeUInt32LE(state.truncateBlockIndex, 4)
+    buf.writeUInt32LE(state.compactedBlockIndex, 8)
+    buf.writeUInt32LE(state.unshiftedOffset, 12)
+    state.unshiftedBlockBuf.copy(buf, 16)
     writeLock((unlock) => {
       raf.write(0, buf, function onRafWriteDone(err) {
         if (err) return unlock(cb, err)
@@ -117,6 +129,7 @@ function Compaction(log, onDone) {
   const persistentState = PersistentState(log.filename, log.blockSize)
   const progress = Obv() // for the unshifted offset
   let startOffset = 0
+  let version = 0
 
   let compactedBlockIndex = -1
   let compactedBlockBuf = null
@@ -127,16 +140,25 @@ function Compaction(log, onDone) {
   let unshiftedBlockBuf = null
   let unshiftedOffset = 0
 
+  let truncateBlockIndex = NO_TRUNCATE
+
   loadPersistentState(function onCompactionStateLoaded2(err) {
     if (err) return onDone(err)
-    startOffset = compactedBlockIndex * log.blockSize
-    compactedBlockIndex -= 1 // because it'll be incremented very soon
-    compactNextBlock()
+    if (truncateBlockIndex !== NO_TRUNCATE) {
+      truncateAndBeDone()
+    } else {
+      startOffset = compactedBlockIndex * log.blockSize
+      compactedBlockIndex -= 1 // because it'll be incremented very soon
+      compactNextBlock()
+    }
   })
 
   function loadPersistentState(cb) {
     persistentState.load(function onCompactionStateLoaded(err, state) {
       if (err) return cb(err)
+      if (state.version !== 1) return cb(new Error('unsupported state version'))
+      version = state.version
+      truncateBlockIndex = state.truncateBlockIndex
       compactedBlockIndex = state.compactedBlockIndex
       unshiftedOffset = state.unshiftedOffset
       unshiftedBlockBuf = state.unshiftedBlockBuf
@@ -168,6 +190,8 @@ function Compaction(log, onDone) {
     function saveIt() {
       persistentState.save(
         {
+          version,
+          truncateBlockIndex,
           compactedBlockIndex,
           unshiftedOffset,
           unshiftedBlockBuf,
@@ -361,9 +385,30 @@ function Compaction(log, onDone) {
   function stop() {
     compactedBlockBuf = null
     unshiftedBlockBuf = null
-    persistentState.destroy(function onCompactionStateDestroyed(err) {
+    truncateBlockIndex = compactedBlockIndex
+    const state = {
+      version,
+      truncateBlockIndex,
+      compactedBlockIndex: 0,
+      unshiftedOffset: 0,
+      unshiftedBlockBuf: Buffer.alloc(0),
+    }
+    persistentState.save(state, function onTruncateStateSaved(err) {
       if (err) return onDone(err)
-      log.truncate(compactedBlockIndex, onDone)
+      truncateAndBeDone()
+    })
+  }
+
+  function truncateAndBeDone() {
+    if (truncateAndBeDone === NO_TRUNCATE) {
+      return onDone(new Error('Cannot truncate log yet'))
+    }
+    log.truncate(truncateBlockIndex, function onTruncatedLog(err, sizeDiff) {
+      if (err) return onDone(err)
+      persistentState.destroy(function onStateDestroyed(err) {
+        if (err) return onDone(err)
+        onDone(null, sizeDiff)
+      })
     })
   }
 
