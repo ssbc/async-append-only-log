@@ -78,10 +78,7 @@ function PersistentState(logFilename, blockSize) {
     if (stateFileExists(logFilename)) {
       raf.close(function onRAFClosed(err) {
         if (err) return cb(err)
-        fs.unlink(raf.filename, function onStateFileDeleted(err) {
-          if (err) return cb(err)
-          else cb()
-        })
+        fs.unlink(raf.filename, cb)
       })
     } else {
       cb()
@@ -163,11 +160,9 @@ function Compaction(log, onDone) {
 
   function savePersistentState(cb) {
     if (!unshiftedBlockBuf) {
-      loadUnshiftedBlock(function onUnshiftedBlockLoaded() {
-        saveIt.call(this)
-      })
+      loadUnshiftedBlock(saveIt)
     } else {
-      saveIt.call(this)
+      saveIt()
     }
 
     function saveIt() {
@@ -249,9 +244,7 @@ function Compaction(log, onDone) {
     while (true) {
       // Fetch the unshifted block, if necessary
       if (!unshiftedBlockBuf) {
-        loadUnshiftedBlock(function onUnshiftedBlockLoaded() {
-          continueCompactingBlock()
-        })
+        loadUnshiftedBlock(continueCompactingBlock)
         return
       }
       // When all records have been shifted (thus end of log), stop compacting
@@ -273,7 +266,7 @@ function Compaction(log, onDone) {
       // Proceed to compact the next block if this block is full
       if (log.hasNoSpaceFor(unshiftedDataBuf, offsetInCompactedBlock)) {
         saveCompactedBlock()
-        setImmediate(() => compactNextBlock())
+        setImmediate(compactNextBlock)
         return
       }
 
