@@ -485,10 +485,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     }
     onDrain(function startCompactAfterDrain() {
       onDeletesFlushed(function startCompactAfterDeletes() {
-        compaction = new Compaction(self, (err, sizeDiff) => {
+        compaction = new Compaction(self, (err, stats) => {
           compaction = null
           if (err) return cb(err)
-          compactionProgress.set({ sizeDiff, percent: 1, done: true })
+          compactionProgress.set({ ...stats, percent: 1, done: true })
           for (const callback of waitingCompaction) callback()
           waitingCompaction.length = 0
           cb()

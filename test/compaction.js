@@ -26,9 +26,31 @@ tape('compact a log that does not have holes', async (t) => {
   await run(log.onDrain)()
   t.pass('append two records')
 
+  const progressArr = []
+  log.compactionProgress((stats) => {
+    progressArr.push(stats)
+  })
+
   const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
+
+  t.deepEquals(
+    progressArr,
+    [
+      {
+        sizeDiff: 0,
+        percent: 1,
+        done: true,
+      },
+      {
+        sizeDiff: 0,
+        percent: 1,
+        done: true,
+      },
+    ],
+    'progress events'
+  )
 
   await new Promise((resolve) => {
     log.stream({ offsets: false }).pipe(
@@ -519,7 +541,7 @@ tape('startOffset is correct', async (t) => {
         done: false,
       },
       {
-        sizeDiff: 0,
+        sizeDiff: 1,
         percent: 1,
         done: true,
       },
@@ -616,7 +638,7 @@ tape('recovers from crash just after persisting state', async (t) => {
         done: false,
       },
       {
-        sizeDiff: 0,
+        sizeDiff: 1,
         percent: 1,
         done: true,
       },
@@ -668,8 +690,8 @@ tape('recovers from crash just after persisting block', async (t) => {
   t.pass('suppose compaction was in progress: [0x22, 0x33] and [0x33, 0x44]')
 
   const version = [1, 0, 0, 0] // uint32LE
-  const startOffset = [0,0,0,0] // uint32LE
-  const truncateBlockIndex = [255, 255, 255, 255] //uint32LE
+  const startOffset = [0, 0, 0, 0] // uint32LE
+  const truncateBlockIndex = [255, 255, 255, 255] // uint32LE
   const compactingBlockIndex = [0, 0, 0, 0] // uint32LE
   const unshiftedOffset = [0, 0, 0, 0] // uint32LE
   const unshiftedBlock = [
@@ -739,7 +761,7 @@ tape('restarts from crash just before truncating log', async (t) => {
   t.pass('suppose compaction ready: [0x22, 0x44], [0x55, 0x66], [0x55, 0x66]')
 
   const version = [1, 0, 0, 0] // uint32LE
-  const startOffset = [0,0,0,0] // uint32LE
+  const startOffset = [0, 0, 0, 0] // uint32LE
   const truncateBlockIndex = [1, 0, 0, 0] //uint32LE
   const compactingBlockIndex = [0, 0, 0, 0] // uint32LE
   const unshiftedOffset = [0, 0, 0, 0] // uint32LE
