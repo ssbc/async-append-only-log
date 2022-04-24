@@ -134,6 +134,7 @@ function Compaction(log, onDone) {
   const progress = Obv() // for the unshifted offset
   let startOffset = 0
   let version = 0
+  let holesFound = true // assume true
 
   let compactedBlockIndex = -1
   let compactedBlockBuf = null
@@ -170,13 +171,11 @@ function Compaction(log, onDone) {
       if (state.initial) {
         findStateFromLog(function foundStateFromLog(err, state) {
           if (err) return cb(err)
-          startOffset = state.compactedBlockIndex * log.blockSize
           compactedBlockIndex = state.compactedBlockIndex
+          startOffset = compactedBlockIndex * log.blockSize
           unshiftedOffset = state.unshiftedOffset
           unshiftedBlockBuf = state.unshiftedBlockBuf
-          unshiftedBlockIndex = Math.floor(
-            state.unshiftedOffset / log.blockSize
-          )
+          unshiftedBlockIndex = Math.floor(unshiftedOffset / log.blockSize)
           savePersistentState(cb)
         })
       } else {
@@ -212,6 +211,7 @@ function Compaction(log, onDone) {
       if (err) return cb(err)
       if (holeOffset === -1) {
         compactedBlockIndex = Math.floor(log.since.value / log.blockSize)
+        holesFound = false
         stop()
         return
       }
@@ -414,7 +414,13 @@ function Compaction(log, onDone) {
       if (err) return onDone(err)
       persistentState.destroy(function onStateDestroyed(err) {
         if (err) return onDone(err)
-        onDone(null, sizeDiff)
+        if (sizeDiff === 0 && holesFound) {
+          // Truncation did not make the log smaller but it did rewrite the log.
+          // So report 1 byte as a way of saying that compaction filled holes.
+          onDone(null, { sizeDiff: 1 })
+        } else {
+          onDone(null, { sizeDiff })
+        }
       })
     })
   }
