@@ -43,6 +43,7 @@ const DEFAULT_VALIDATE = () => true
 
 module.exports = function AsyncAppendOnlyLog(filename, opts) {
   const cache = new Cache(1024) // This is potentially 64 MiB!
+  const recCache = new Cache(128)
   const raf = RAF(filename)
   const blockSize = (opts && opts.blockSize) || DEFAULT_BLOCK_SIZE
   const codec = (opts && opts.codec) || DEFAULT_CODEC
@@ -210,6 +211,13 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function get(offset, cb) {
+    if (recCache.has(offset)) {
+      const [dataBuf] = recCache.get(offset)
+      if (isBufferZero(dataBuf)) return cb(deletedRecordErr())
+      cb(null, codec.decode(dataBuf))
+      return
+    }
+
     const logSize = latestBlockIndex * blockSize + nextOffsetInBlock
     if (typeof offset !== 'number') return cb(nanOffsetErr(offset))
     if (isNaN(offset)) return cb(nanOffsetErr(offset))
@@ -218,8 +226,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
     getBlock(offset, function gotBlock(err, blockBuf) {
       if (err) return cb(err)
-      const [dataBuf] = Record.read(blockBuf, getOffsetInBlock(offset))
+      const [dataBuf, recSize] = Record.read(blockBuf, getOffsetInBlock(offset))
       if (isBufferZero(dataBuf)) return cb(deletedRecordErr())
+      recCache.set(offset, [dataBuf, recSize])
       cb(null, codec.decode(dataBuf))
     })
   }
@@ -230,7 +239,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   // >0: next record within block
   function getDataNextOffset(blockBuf, offset, asRaw = false) {
     const offsetInBlock = getOffsetInBlock(offset)
-    const [dataBuf, recSize] = Record.read(blockBuf, offsetInBlock)
+    const [dataBuf, recSize] = recCache.has(offset)
+      ? recCache.get(offset)
+      : Record.read(blockBuf, offsetInBlock)
+    if (!recCache.has(offset)) recCache.set(offset, [dataBuf, recSize])
     const nextLength = Record.readDataLength(blockBuf, offsetInBlock + recSize)
 
     let nextOffset
@@ -487,6 +499,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       onDeletesFlushed(function startCompactAfterDeletes() {
         compaction = new Compaction(self, (err, stats) => {
           compaction = null
+          recCache.clear()
           if (err) return cb(err)
           compactionProgress.set({ ...stats, percent: 1, done: true })
           for (const callback of waitingCompaction) callback()
