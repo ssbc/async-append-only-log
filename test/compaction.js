@@ -204,9 +204,13 @@ tape('shift many blocks', async (t) => {
     progressArr.push(stats)
   })
 
+  t.equals(log.since.value, 44 + 6, 'since before compaction')
+
   const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
+
+  t.equals(log.since.value, 33 + 6, 'since after compaction')
 
   t.deepEquals(
     progressArr,
