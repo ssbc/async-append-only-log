@@ -20,6 +20,7 @@ const {
   appendLargerThanBlockErr,
   streamClosedErr,
   appendTransactionWantsArrayErr,
+  unexpectedTruncationErr,
 } = require('./errors')
 const Stream = require('./stream')
 const Record = require('./record')
@@ -460,7 +461,17 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function truncate(newLatestBlockIndex, cb) {
-    if (newLatestBlockIndex >= latestBlockIndex) return cb(null, 0)
+    if (newLatestBlockIndex > latestBlockIndex) {
+      return cb(unexpectedTruncationErr())
+    }
+    if (newLatestBlockIndex === latestBlockIndex) {
+      const blockStart = latestBlockIndex * blockSize
+      loadLatestBlock(blockStart, function onTruncateLoadedLatestBlock1(err) {
+        if (err) cb(err)
+        else cb(null, 0)
+      })
+      return
+    }
     const size = (latestBlockIndex + 1) * blockSize
     const newSize = (newLatestBlockIndex + 1) * blockSize
     for (let i = newLatestBlockIndex + 1; i < latestBlockIndex; ++i) {
@@ -469,7 +480,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     truncateWithFSync(newSize, function onTruncateWithFSyncDone(err) {
       if (err) return cb(err)
       const blockStart = newSize - blockSize
-      loadLatestBlock(blockStart, function onTruncateLoadedLatestBlock(err) {
+      loadLatestBlock(blockStart, function onTruncateLoadedLatestBlock2(err) {
         if (err) return cb(err)
         const sizeDiff = size - newSize
         cb(null, sizeDiff)

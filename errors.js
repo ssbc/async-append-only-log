@@ -50,6 +50,14 @@ function appendTransactionWantsArrayErr() {
   return new Error('appendTransaction expects first argument to be an array')
 }
 
+function unexpectedTruncationErr() {
+  return new Error(
+    'truncate() is trying to *increase* the log size, ' +
+      'which is totally unexpected. ' +
+      'There may be a logic bug in async-append-only-log'
+  )
+}
+
 module.exports = {
   ErrorWithCode,
   nanOffsetErr,
@@ -60,4 +68,5 @@ module.exports = {
   appendLargerThanBlockErr,
   streamClosedErr,
   appendTransactionWantsArrayErr,
+  unexpectedTruncationErr,
 }

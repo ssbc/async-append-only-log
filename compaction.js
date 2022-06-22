@@ -407,7 +407,7 @@ function Compaction(log, onDone) {
   }
 
   function truncateAndBeDone() {
-    if (truncateAndBeDone === NO_TRUNCATE) {
+    if (truncateBlockIndex === NO_TRUNCATE) {
       return onDone(new Error('Cannot truncate log yet'))
     }
     log.truncate(truncateBlockIndex, function onTruncatedLog(err, sizeDiff) {
