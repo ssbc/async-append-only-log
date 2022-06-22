@@ -394,9 +394,13 @@ tape('compact handling last deleted record on last block', async (t) => {
     )
   })
 
+  t.equals(log.since.value, 22 + 6, 'since before compaction')
+
   const [err] = await run(log.compact)()
   await run(log.onDrain)()
   t.error(err, 'no error when compacting')
+
+  t.equals(log.since.value, 22 + 0, 'since after compaction')
 
   await new Promise((resolve) => {
     log.stream({ offsets: false }).pipe(
