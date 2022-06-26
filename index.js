@@ -475,7 +475,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     const size = (latestBlockIndex + 1) * blockSize
     const newSize = (newLatestBlockIndex + 1) * blockSize
     for (let i = newLatestBlockIndex + 1; i < latestBlockIndex; ++i) {
-      cache.remove(i)
+      cache.delete(i)
     }
     truncateWithFSync(newSize, function onTruncateWithFSyncDone(err) {
       if (err) return cb(err)
