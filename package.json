@@ -13,8 +13,8 @@
     "LICENSES/*"
   ],
   "dependencies": {
+    "@alloc/quick-lru": "^5.2.0",
     "debug": "^4.2.0",
-    "hashlru": "^2.3.0",
     "is-buffer-zero": "^1.0.0",
     "lodash.debounce": "^4.0.8",
     "looper": "^4.0.0",
