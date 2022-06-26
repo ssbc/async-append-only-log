@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-only
 
-const Cache = require('hashlru')
+const Cache = require('@alloc/quick-lru')
 const RAF = require('polyraf')
 const Obv = require('obz')
 const debounce = require('lodash.debounce')
@@ -43,7 +43,7 @@ const DEFAULT_WRITE_TIMEOUT = 250
 const DEFAULT_VALIDATE = () => true
 
 module.exports = function AsyncAppendOnlyLog(filename, opts) {
-  const cache = new Cache(1024) // This is potentially 64 MiB!
+  const cache = new Cache({ maxSize: 1024 }) // This is potentially 64 MiB!
   const raf = RAF(filename)
   const blockSize = (opts && opts.blockSize) || DEFAULT_BLOCK_SIZE
   const codec = (opts && opts.codec) || DEFAULT_CODEC
