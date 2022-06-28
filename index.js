@@ -18,7 +18,6 @@ const {
   outOfBoundsOffsetErr,
   delDuringCompactErr,
   appendLargerThanBlockErr,
-  streamClosedErr,
   appendTransactionWantsArrayErr,
   unexpectedTruncationErr,
 } = require('./errors')
@@ -514,7 +513,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   function close(cb) {
     onDrain(function closeAfterHavingDrained() {
       onDeletesFlushed(function closeAfterDeletesFlushed() {
-        for (const stream of self.streams) stream.abort(streamClosedErr())
+        for (const stream of self.streams) stream.abort(true)
         self.streams = []
         raf.close(cb)
       })
