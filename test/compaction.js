@@ -290,20 +290,6 @@ tape('shift many blocks', async (t) => {
         done: false,
       },
       {
-        startOffset: 11,
-        compactedOffset: 22,
-        unshiftedOffset: 28,
-        percent: 0.4358974358974359,
-        done: false,
-      },
-      {
-        startOffset: 11,
-        compactedOffset: 33,
-        unshiftedOffset: 44,
-        percent: 0.8461538461538461,
-        done: false,
-      },
-      {
         sizeDiff: 11, // the log is now 1 block shorter
         percent: 1,
         done: true,
@@ -601,13 +587,6 @@ tape('startOffset is correct', async (t) => {
         compactedOffset: 0,
         unshiftedOffset: 3,
         percent: 0.25,
-        done: false,
-      },
-      {
-        startOffset: 0,
-        compactedOffset: 9,
-        unshiftedOffset: 12,
-        percent: 1,
         done: false,
       },
       {
