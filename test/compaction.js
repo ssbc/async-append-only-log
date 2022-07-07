@@ -90,12 +90,11 @@ tape('compact waits for old log.streams to end', async (t) => {
   await run(log.onDrain)()
   t.pass(`appended ${RECORDS} records`)
 
-  await run(log.del)(0)
-  await run(log.del)(3)
-  await run(log.del)(6)
-  await run(log.del)(9)
+  await run(log.del)(RECORDS * 0.9 * 4)
+  await run(log.del)(RECORDS * 0.9 * 4 + 4)
+  await run(log.del)(RECORDS * 0.9 * 4 + 8)
   await run(log.onDeletesFlushed)()
-  t.pass(`deleted 4 records`)
+  t.pass(`deleted 3 records`)
 
   let compactionStarted
   log.compactionProgress((stats) => {
