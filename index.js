@@ -453,6 +453,20 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
+  function onStreamsDone(cb) {
+    if (self.streams.every((stream) => stream.cursor === since.value)) {
+      return cb()
+    }
+    const interval = setInterval(function checkIfStreamsDone() {
+      for (const stream of self.streams) {
+        if (stream.cursor < since.value) return
+      }
+      clearInterval(interval)
+      cb()
+    }, 100)
+    if (interval.unref) interval.unref()
+  }
+
   function overwrite(blockIndex, blockBuf, cb) {
     cache.set(blockIndex, blockBuf)
     const blockStart = blockIndex * blockSize
@@ -493,18 +507,20 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       waitingCompaction.push(cb)
       return
     }
-    onDrain(function startCompactAfterDrain() {
-      onDeletesFlushed(function startCompactAfterDeletes() {
-        compaction = new Compaction(self, (err, stats) => {
-          compaction = null
-          if (err) return cb(err)
-          compactionProgress.set({ ...stats, percent: 1, done: true })
-          for (const callback of waitingCompaction) callback()
-          waitingCompaction.length = 0
-          cb()
-        })
-        compaction.progress((stats) => {
-          compactionProgress.set({ ...stats, done: false })
+    onStreamsDone(function startCompactAfterStreamsDone() {
+      onDrain(function startCompactAfterDrain() {
+        onDeletesFlushed(function startCompactAfterDeletes() {
+          compaction = new Compaction(self, (err, stats) => {
+            compaction = null
+            if (err) return cb(err)
+            compactionProgress.set({ ...stats, percent: 1, done: true })
+            for (const callback of waitingCompaction) callback()
+            waitingCompaction.length = 0
+            cb()
+          })
+          compaction.progress((stats) => {
+            compactionProgress.set({ ...stats, done: false })
+          })
         })
       })
     })
