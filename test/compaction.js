@@ -10,8 +10,14 @@ const timer = require('util').promisify(setTimeout)
 const Log = require('../')
 
 const hexCodec = {
-  encode: (num) => Buffer.from(num.toString(16), 'hex'),
-  decode: (buf) => parseInt(buf.toString('hex'), 16),
+  encode(num) {
+    const hex = num.toString(16)
+    const len = hex.length % 2 === 0 ? hex.length : hex.length + 1
+    return Buffer.from(hex.padStart(len, '0'), 'hex')
+  },
+  decode(buf) {
+    return parseInt(buf.toString('hex'), 16)
+  },
 }
 
 tape('compact a log that does not have holes', async (t) => {
@@ -58,6 +64,62 @@ tape('compact a log that does not have holes', async (t) => {
         t.error(err, 'no error when streaming compacted log')
         t.deepEqual(ary, [buf1, buf2], 'both records exist')
         resolve()
+      })
+    )
+  })
+
+  await run(log.close)()
+  t.end()
+})
+
+tape('compact waits for old log.streams to end', async (t) => {
+  t.timeoutAfter(20000)
+  const BLOCKSIZE = 100;
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, {
+    blockSize: BLOCKSIZE,
+    codec: hexCodec,
+  })
+
+  const RECORDS = 50000
+  const COMPACT_AT_RECORD = 200
+  const PERCENTAGE = ((100 * COMPACT_AT_RECORD) / RECORDS).toFixed(1)
+  const records = Array.from({ length: RECORDS }, (_, i) => i + 1)
+
+  await run(log.append)(records)
+  await run(log.onDrain)()
+  t.pass(`appended ${RECORDS} records`)
+
+  await run(log.del)(0)
+  await run(log.del)(3)
+  await run(log.del)(6)
+  await run(log.del)(9)
+  await run(log.onDeletesFlushed)()
+  t.pass(`deleted 4 records`)
+
+  let compactionStarted
+  log.compactionProgress((stats) => {
+    if (!stats.done) {
+      compactionStarted = true
+      return false // stop tracking compactionProgress
+    }
+  })
+
+  await new Promise((resolve) => {
+    log.stream({ gt: BLOCKSIZE, live: true, offsets: true }).pipe(
+      push.drain((record) => {
+        if (record.value === COMPACT_AT_RECORD) {
+          t.pass(`start compact at ${PERCENTAGE}% of the log scan (old part)`)
+          log.compact((err) => {
+            t.true(compactionStarted, 'compaction had started')
+            t.error(err, 'compacted just completed')
+            resolve()
+          })
+        }
+        if (record.value === RECORDS) {
+          t.pass('log scan (old part) ended')
+          t.false(compactionStarted, 'compaction should not have started yet')
+        }
       })
     )
   })
