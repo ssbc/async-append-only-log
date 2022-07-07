@@ -41,6 +41,8 @@ const DEFAULT_CODEC = { encode: (x) => x, decode: (x) => x }
 const DEFAULT_WRITE_TIMEOUT = 250
 const DEFAULT_VALIDATE = () => true
 
+const COMPACTION_PROGRESS_EMIT_INTERVAL = 1000
+
 module.exports = function AsyncAppendOnlyLog(filename, opts) {
   const cache = new Cache({ maxSize: 1024 }) // This is potentially 64 MiB!
   const raf = RAF(filename)
@@ -518,8 +520,13 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
             waitingCompaction.length = 0
             cb()
           })
+          let prevUpdate = 0
           compaction.progress((stats) => {
-            compactionProgress.set({ ...stats, done: false })
+            const now = Date.now()
+            if (now - prevUpdate > COMPACTION_PROGRESS_EMIT_INTERVAL) {
+              prevUpdate = now
+              compactionProgress.set({ ...stats, done: false })
+            }
           })
         })
       })
