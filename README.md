@@ -186,6 +186,18 @@ log.since((offset) => {
 })
 ```
 
+### Get statistics on deleted records
+
+Among other things, this is useful for knowing how much storage space you could
+save by running compaction, to eliminate deleted records.
+
+```js
+log.stats((err, stats) => {
+  console.log(stats)
+  // { totalBytes, totalCount, deletedBytes, deletedCount }
+})
+```
+
 ### Compact the log (remove deleted records)
 
 ```js

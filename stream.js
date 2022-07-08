@@ -30,6 +30,7 @@ function Stream(log, opts) {
   this.live = !!opts.live
   this.offsets = opts.offsets !== false
   this.values = opts.values !== false
+  this.sizes = opts.sizes === true
   this.limit = opts.limit || 0
 
   this.state = STREAM_STATE.INITIALIZING
@@ -74,11 +75,20 @@ Stream.prototype._ready = function _ready() {
   this.resume()
 }
 
-Stream.prototype._writeToSink = function _writeToSink(data) {
-  if (this.values) {
-    if (this.offsets) this.sink.write({ offset: this.cursor, value: data })
-    else this.sink.write(data)
-  } else this.sink.write(this.cursor)
+Stream.prototype._writeToSink = function _writeToSink(value, size) {
+  const offset = this.cursor
+
+  const o = this.offsets
+  const v = this.values
+  const s = this.sizes
+  if (o && v && s) this.sink.write({ offset, value, size })
+  else if (o && v) this.sink.write({ offset, value })
+  else if (o && s) this.sink.write({ offset, size })
+  else if (v && s) this.sink.write({ value, size })
+  else if (o) this.sink.write(offset)
+  else if (v) this.sink.write(value)
+  else if (s) this.sink.write(size)
+  else this.sink.write(offset)
 }
 
 // returns a new BLOCK_STATE
@@ -86,7 +96,10 @@ Stream.prototype._handleBlock = function _handleBlock(blockBuf) {
   while (true) {
     if (this.sink.paused) return BLOCK_STATE.PAUSED
 
-    const [offset, data] = this.log.getDataNextOffset(blockBuf, this.cursor)
+    const [offset, value, size] = this.log.getDataNextOffset(
+      blockBuf,
+      this.cursor
+    )
 
     if (this.skip_next) {
       this.skip_next = false
@@ -106,7 +119,7 @@ Stream.prototype._handleBlock = function _handleBlock(blockBuf) {
       (this.min === null || this.min < o || this.min_inclusive === o) &&
       (this.max === null || this.max > o || this.max_inclusive === o)
     ) {
-      this._writeToSink(data)
+      this._writeToSink(value, size)
 
       if (offset > 0) this.cursor = offset
       else if (offset === 0) return BLOCK_STATE.GET_NEXT_BLOCK

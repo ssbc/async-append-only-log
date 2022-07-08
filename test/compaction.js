@@ -32,6 +32,12 @@ tape('compact a log that does not have holes', async (t) => {
   await run(log.onDrain)()
   t.pass('append two records')
 
+  const [, stats] = await run(log.stats)()
+  t.equals(stats.totalCount, 2, 'stats.totalCount')
+  t.ok(stats.totalBytes, 'stats.totalBytes')
+  t.equals(stats.deletedCount, 0, 'stats.deletedCount')
+  t.equals(stats.deletedBytes, 0, 'stats.deletedBytes')
+
   const progressArr = []
   log.compactionProgress((stats) => {
     progressArr.push(stats)
@@ -74,7 +80,7 @@ tape('compact a log that does not have holes', async (t) => {
 
 tape('compact waits for old log.streams to end', async (t) => {
   t.timeoutAfter(20000)
-  const BLOCKSIZE = 100;
+  const BLOCKSIZE = 100
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, {
     blockSize: BLOCKSIZE,
@@ -95,6 +101,12 @@ tape('compact waits for old log.streams to end', async (t) => {
   await run(log.del)(RECORDS * 0.9 * 4 + 8)
   await run(log.onDeletesFlushed)()
   t.pass(`deleted 3 records`)
+
+  const [, stats] = await run(log.stats)()
+  t.equals(stats.totalCount, RECORDS, 'stats.totalCount')
+  t.ok(stats.totalBytes, 'stats.totalBytes')
+  t.equals(stats.deletedCount, 3, 'stats.deletedCount')
+  t.equals(stats.deletedBytes, 12, 'stats.deletedBytes')
 
   let compactionStarted
   log.compactionProgress((stats) => {
