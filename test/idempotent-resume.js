@@ -61,7 +61,7 @@ tape('a second resume() on the same stream is idempotent', function (t) {
 })
 
 tape('close', function (t) {
-  t.equal(log.streams.length, 0, 'no open streams')
+  t.equal(log.streams.size, 0, 'no open streams')
   log.close(() => {
     t.end()
   })

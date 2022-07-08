@@ -172,8 +172,7 @@ Stream.prototype.liveResume = function liveResume() {
 
 Stream.prototype.abort = function abort(err) {
   this.state = STREAM_STATE.ENDED
-  const i = this.log.streams.indexOf(this)
-  if (~i) this.log.streams.splice(i, 1)
+  this.log.streams.delete(this)
   if (!this.sink.ended && this.sink.end) {
     this.sink.ended = true
     this.sink.end(err === true ? null : err)

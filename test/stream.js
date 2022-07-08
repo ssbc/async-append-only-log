@@ -300,7 +300,7 @@ tape('double live', function (t) {
 })
 
 tape('close', function (t) {
-  t.equal(log.streams.length, 0, 'no open streams')
+  t.equal(log.streams.size, 0, 'no open streams')
   log.stream({ offsets: false }).pipe({
     paused: false,
     write: function () {},

@@ -456,7 +456,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function onStreamsDone(cb) {
-    if (self.streams.every((stream) => stream.cursor === since.value)) {
+    if ([...self.streams].every((stream) => stream.cursor === since.value)) {
       return cb()
     }
     const interval = setInterval(function checkIfStreamsDone() {
@@ -537,7 +537,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     onDrain(function closeAfterHavingDrained() {
       onDeletesFlushed(function closeAfterDeletesFlushed() {
         for (const stream of self.streams) stream.abort(true)
-        self.streams = []
+        self.streams.clear()
         raf.close(cb)
       })
     })
@@ -587,7 +587,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     compactionProgress,
     stream(opts) {
       const stream = new Stream(self, opts)
-      self.streams.push(stream)
+      self.streams.add(stream)
       return stream
     },
 
@@ -602,6 +602,6 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     getNextBlockStart,
     getDataNextOffset,
     getBlock,
-    streams: [],
+    streams: new Set(),
   })
 }
