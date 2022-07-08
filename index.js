@@ -5,6 +5,7 @@
 const Cache = require('@alloc/quick-lru')
 const RAF = require('polyraf')
 const Obv = require('obz')
+const push = require('push-stream')
 const debounce = require('lodash.debounce')
 const isBufferZero = require('is-buffer-zero')
 const debug = require('debug')('async-append-only-log')
@@ -503,6 +504,31 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     })
   }
 
+  function stats(cb) {
+    let totalCount = 0
+    let deletedCount = 0
+    let deletedBytes = 0
+    self.stream({ offsets: true, values: true, sizes: true }).pipe(
+      push.drain(
+        function sinkToMeasureHoles(record) {
+          totalCount += 1
+          if (record.value === null) {
+            deletedCount += 1
+            deletedBytes += record.size
+          }
+        },
+        function sinkEndedMeasureHoles() {
+          cb(null, {
+            totalCount,
+            totalBytes: since.value,
+            deletedCount,
+            deletedBytes,
+          })
+        }
+      )
+    )
+  }
+
   function compact(cb) {
     if (compaction) {
       debug('compaction already in progress')
@@ -584,6 +610,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     onDeletesFlushed: onLoad(onDeletesFlushed),
     compact: onLoad(compact),
     since,
+    stats,
     compactionProgress,
     stream(opts) {
       const stream = new Stream(self, opts)
