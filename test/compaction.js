@@ -57,6 +57,7 @@ tape('compact a log that does not have holes', async (t) => {
       },
       {
         sizeDiff: 0,
+        holesFound: 0,
         percent: 1,
         done: true,
       },
@@ -302,6 +303,7 @@ tape('shift many blocks', async (t) => {
       },
       {
         sizeDiff: 11, // the log is now 1 block shorter
+        holesFound: 3,
         percent: 1,
         done: true,
       },
@@ -602,6 +604,7 @@ tape('startOffset is correct', async (t) => {
       },
       {
         sizeDiff: 1,
+        holesFound: 1,
         percent: 1,
         done: true,
       },
@@ -699,6 +702,7 @@ tape('recovers from crash just after persisting state', async (t) => {
       },
       {
         sizeDiff: 1,
+        holesFound: 0,
         percent: 1,
         done: true,
       },
