@@ -220,6 +220,7 @@ log.compactionProgress((progress) => {
   //   percent,
   //   done,
   //   sizeDiff,
+  //   holesFound,
   // }
 })
 ```
@@ -236,6 +237,8 @@ Where
   (`true`).
 - `sizeDiff`: number of bytes freed after compaction is finished. Only available
   if `done` is `true`.
+- `holesFound`: number of deleted records that were found while compaction was
+  ongoing. Only available if `done` is `true`.
 
 ### Close the log
 
