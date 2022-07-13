@@ -67,8 +67,8 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let compaction = null
   const compactionProgress = Obv().set(
     Compaction.stateFileExists(filename)
-      ? { done: false }
-      : { sizeDiff: 0, percent: 1, done: true }
+      ? { percent: 0, done: false }
+      : { percent: 1, done: true, sizeDiff: 0 }
   )
   const waitingCompaction = []
 
@@ -538,6 +538,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     onStreamsDone(function startCompactAfterStreamsDone() {
       onDrain(function startCompactAfterDrain() {
         onDeletesFlushed(function startCompactAfterDeletes() {
+          if (compactionProgress.value.done) {
+            compactionProgress.set({ percent: 0, done: false })
+          }
           compaction = new Compaction(self, (err, stats) => {
             compaction = null
             if (err) return cb(err)
