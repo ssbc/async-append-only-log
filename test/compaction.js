@@ -50,17 +50,9 @@ tape('compact a log that does not have holes', async (t) => {
   t.deepEquals(
     progressArr,
     [
-      {
-        sizeDiff: 0,
-        percent: 1,
-        done: true,
-      },
-      {
-        sizeDiff: 0,
-        holesFound: 0,
-        percent: 1,
-        done: true,
-      },
+      { percent: 1, done: true, sizeDiff: 0 },
+      { percent: 0, done: false },
+      { percent: 1, done: true, sizeDiff: 0, holesFound: 0 },
     ],
     'progress events'
   )
@@ -293,6 +285,10 @@ tape('shift many blocks', async (t) => {
         sizeDiff: 0,
         percent: 1,
         done: true,
+      },
+      {
+        percent: 0,
+        done: false,
       },
       {
         startOffset: 11,
@@ -596,6 +592,10 @@ tape('startOffset is correct', async (t) => {
         done: true,
       },
       {
+        percent: 0,
+        done: false,
+      },
+      {
         startOffset: 0,
         compactedOffset: 0,
         unshiftedOffset: 3,
@@ -691,6 +691,7 @@ tape('recovers from crash just after persisting state', async (t) => {
     progressArr,
     [
       {
+        percent: 0,
         done: false,
       },
       {
