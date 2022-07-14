@@ -64,6 +64,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let latestBlockIndex = null
   let nextOffsetInBlock = null
   const since = Obv() // offset of last written record
+  const deleted = Obv() // offset of a record that was just deleted
   let compaction = null
   const compactionProgress = Obv().set(
     Compaction.stateFileExists(filename)
@@ -273,6 +274,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       Record.overwriteWithZeroes(actualBlockBuf, getOffsetInBlock(offset))
       blocksWithDeletables.set(blockIndex, actualBlockBuf)
       scheduleFlushDelete()
+      deleted.set(offset)
       cb()
     }
   }
@@ -615,6 +617,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     since,
     stats,
     compactionProgress,
+    deleted,
     stream(opts) {
       const stream = new Stream(self, opts)
       self.streams.add(stream)
