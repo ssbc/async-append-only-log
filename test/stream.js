@@ -130,6 +130,26 @@ tape('offsets', function (t) {
   )
 })
 
+tape('push.drain', function (t) {
+  const expected = [0, 12]
+
+  log.stream({ offsets: true, values: false }).pipe(
+    push.drain((x) => {
+      t.true(expected.length > 0)
+      t.equals(x, expected.shift())
+      if (x === 12) return false
+      if (x === 34) t.fail('should not receive more values after abort')
+    }, (err) => {
+      t.fail('end should not be called')
+    })
+  )
+
+  setTimeout(() => {
+    t.equals(expected.length, 0)
+    t.end()
+  }, 1000)
+})
+
 tape('pausable', function (t) {
   let i = 0
   let sink
