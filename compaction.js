@@ -237,14 +237,12 @@ function Compaction(log, onDone) {
   }
 
   function findFirstDeletedOffset(cb) {
-    let once = false
     log.stream({ offsets: true, values: true }).pipe(
       push.drain(
         function sinkToFindFirstDeleted(record) {
-          if (record.value === null && !once) {
-            once = true
+          if (record.value === null) {
             cb(null, record.offset)
-            return false
+            return false // abort push.drain
           }
         },
         function sinkEndedLookingForDeleted() {
@@ -255,14 +253,12 @@ function Compaction(log, onDone) {
   }
 
   function findNonDeletedOffsetGTE(gte, cb) {
-    let once = false
     log.stream({ gte, offsets: true, values: true }).pipe(
       push.drain(
         function sinkToFindNonDeleted(record) {
-          if (record.value !== null && !once) {
-            once = true
+          if (record.value !== null) {
             cb(null, record.offset)
-            return false
+            return false // abort push.drain
           }
         },
         function sinkEndedLookingForNonDeleted() {
