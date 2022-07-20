@@ -94,8 +94,7 @@ Stream.prototype._writeToSink = function _writeToSink(value, size) {
 // returns a new BLOCK_STATE
 Stream.prototype._handleBlock = function _handleBlock(blockBuf) {
   while (true) {
-    if (this.sink.paused) return BLOCK_STATE.PAUSED
-    if (this.sink.ended) return BLOCK_STATE.PAUSED
+    if (this.sink.paused || this.sink.ended) return BLOCK_STATE.PAUSED
 
     const [offset, value, size] = this.log.getDataNextOffset(
       blockBuf,
