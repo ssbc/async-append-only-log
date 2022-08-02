@@ -528,11 +528,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   function stats(cb) {
     if (since.value == null) {
       since((totalBytes) => {
-        cb(null, { totalBytes, deletedBytes })
+        cb(null, { totalBytes: Math.max(0, totalBytes), deletedBytes })
         return false
       })
     } else {
-      cb(null, { totalBytes: since.value, deletedBytes })
+      cb(null, { totalBytes: Math.max(0, since.value), deletedBytes })
     }
   }
 
