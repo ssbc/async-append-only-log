@@ -194,7 +194,7 @@ save by running compaction, to eliminate deleted records.
 ```js
 log.stats((err, stats) => {
   console.log(stats)
-  // { totalBytes, totalCount, deletedBytes, deletedCount }
+  // { totalBytes, deletedBytes }
 })
 ```
 

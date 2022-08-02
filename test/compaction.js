@@ -33,9 +33,7 @@ tape('compact a log that does not have holes', async (t) => {
   t.pass('append two records')
 
   const [, stats] = await run(log.stats)()
-  t.equals(stats.totalCount, 2, 'stats.totalCount')
-  t.ok(stats.totalBytes, 'stats.totalBytes')
-  t.equals(stats.deletedCount, 0, 'stats.deletedCount')
+  t.equals(stats.totalBytes, 10, 'stats.totalBytes')
   t.equals(stats.deletedBytes, 0, 'stats.deletedBytes')
 
   const progressArr = []
@@ -96,13 +94,24 @@ tape('compact waits for old log.streams to end', async (t) => {
   t.pass(`deleted 3 records`)
 
   const [, stats] = await run(log.stats)()
-  t.equals(stats.totalCount, RECORDS, 'stats.totalCount')
-  t.ok(stats.totalBytes, 'stats.totalBytes')
-  t.equals(stats.deletedCount, 3, 'stats.deletedCount')
-  t.equals(stats.deletedBytes, 12, 'stats.deletedBytes')
+  t.equals(stats.totalBytes, 208060, 'stats.totalBytes (1)')
+  t.equals(stats.deletedBytes, 12, 'stats.deletedBytes (1)')
+
+  await run(log.close)()
+
+  const log2 = Log(file, {
+    blockSize: BLOCKSIZE,
+    codec: hexCodec,
+  })
+  t.pass('close and reopen log')
+
+  const [err, stats2] = await run(log2.stats)()
+  t.error(err, 'no error when getting stats')
+  t.equals(stats2.totalBytes, 208060, 'stats.totalBytes (2)')
+  t.equals(stats2.deletedBytes, 12, 'stats.deletedBytes (2)')
 
   let compactionStarted
-  log.compactionProgress((stats) => {
+  log2.compactionProgress((stats) => {
     if (!stats.done) {
       compactionStarted = true
       return false // stop tracking compactionProgress
@@ -110,11 +119,11 @@ tape('compact waits for old log.streams to end', async (t) => {
   })
 
   await new Promise((resolve) => {
-    log.stream({ gt: BLOCKSIZE, live: true, offsets: true }).pipe(
+    log2.stream({ gt: BLOCKSIZE, live: true, offsets: true }).pipe(
       push.drain((record) => {
         if (record.value === COMPACT_AT_RECORD) {
           t.pass(`start compact at ${PERCENTAGE}% of the log scan (old part)`)
-          log.compact((err) => {
+          log2.compact((err) => {
             t.true(compactionStarted, 'compaction had started')
             t.error(err, 'compacted just completed')
             resolve()
@@ -128,7 +137,12 @@ tape('compact waits for old log.streams to end', async (t) => {
     )
   })
 
-  await run(log.close)()
+  const [, stats3] = await run(log2.stats)()
+  t.equals(stats3.totalBytes, 208048, 'stats.totalBytes (3)')
+  t.equals(stats3.deletedBytes, 12, 'stats.deletedBytes (3)')
+
+  await run(log2.close)()
+
   t.end()
 })
 
