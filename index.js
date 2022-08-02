@@ -5,7 +5,7 @@
 const Cache = require('@alloc/quick-lru')
 const RAF = require('polyraf')
 const Obv = require('obz')
-const push = require('push-stream')
+const AtomicFile = require('atomic-file-rw')
 const debounce = require('lodash.debounce')
 const isBufferZero = require('is-buffer-zero')
 const debug = require('debug')('async-append-only-log')
@@ -47,6 +47,7 @@ const COMPACTION_PROGRESS_EMIT_INTERVAL = 1000
 module.exports = function AsyncAppendOnlyLog(filename, opts) {
   const cache = new Cache({ maxSize: 1024 }) // This is potentially 64 MiB!
   const raf = RAF(filename)
+  const statsFilename = filename + '.stats'
   const blockSize = (opts && opts.blockSize) || DEFAULT_BLOCK_SIZE
   const codec = (opts && opts.codec) || DEFAULT_CODEC
   const writeTimeout = (opts && opts.writeTimeout) || DEFAULT_WRITE_TIMEOUT
@@ -63,6 +64,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let latestBlockBuf = null
   let latestBlockIndex = null
   let nextOffsetInBlock = null
+  let deletedBytes = 0
   const since = Obv() // offset of last written record
   let compaction = null
   const compactionProgress = Obv().set(
@@ -80,27 +82,37 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     }
   })()
 
-  raf.stat(function onRAFStatDone(err, stat) {
-    if (err) debug('failed to stat ' + filename, err)
-
-    const fileSize = stat ? stat.size : -1
-
-    if (fileSize <= 0) {
-      debug('empty file')
-      latestBlockBuf = Buffer.alloc(blockSize)
-      latestBlockIndex = 0
-      nextOffsetInBlock = 0
-      cache.set(0, latestBlockBuf)
-      since.set(-1)
-      while (waitingLoad.length) waitingLoad.shift()()
+  AtomicFile.readFile(statsFilename, 'utf8', function statsUp(err, json) {
+    if (err) {
+      debug('error loading stats file: %s', err.message)
+      deletedBytes = 0
     } else {
-      const blockStart = fileSize - blockSize
-      loadLatestBlock(blockStart, function onLoadedLatestBlock(err) {
-        if (err) throw err
-        debug('opened file, since: %d', since.value)
-        while (waitingLoad.length) waitingLoad.shift()()
-      })
+      const stats = JSON.parse(json)
+      deletedBytes = stats.deletedBytes
     }
+
+    raf.stat(function onRAFStatDone(err, stat) {
+      if (err) debug('failed to stat ' + filename, err)
+
+      const fileSize = stat ? stat.size : -1
+
+      if (fileSize <= 0) {
+        debug('empty file')
+        latestBlockBuf = Buffer.alloc(blockSize)
+        latestBlockIndex = 0
+        nextOffsetInBlock = 0
+        cache.set(0, latestBlockBuf)
+        since.set(-1)
+        while (waitingLoad.length) waitingLoad.shift()()
+      } else {
+        const blockStart = fileSize - blockSize
+        loadLatestBlock(blockStart, function onLoadedLatestBlock(err) {
+          if (err) throw err
+          debug('opened file, since: %d', since.value)
+          while (waitingLoad.length) waitingLoad.shift()()
+        })
+      }
+    })
   })
 
   function loadLatestBlock(blockStart, cb) {
@@ -271,6 +283,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       if (err) return cb(err)
       const actualBlockBuf = blocksWithDeletables.get(blockIndex) || blockBuf
       Record.overwriteWithZeroes(actualBlockBuf, getOffsetInBlock(offset))
+      deletedBytes += Record.readSize(actualBlockBuf, getOffsetInBlock(offset))
       blocksWithDeletables.set(blockIndex, actualBlockBuf)
       scheduleFlushDelete()
       cb()
@@ -295,14 +308,18 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     blocksWithDeletables.delete(blockIndex)
     blocksWithDeletables.set(-1, null) // indicate that flush is active
 
-    writeWithFSync(blockStart, blockBuf, null, function flushedDelete(err) {
-      blocksWithDeletables.delete(-1) // indicate that flush is not active
-      if (err) {
-        for (const cb of waitingFlushDelete) cb(err)
-        waitingFlushDelete.length = 0
-        return
-      }
-      flushDelete() // next
+    const stats = JSON.stringify({ deletedBytes })
+    AtomicFile.writeFile(statsFilename, stats, 'utf8', function statsDown(err) {
+      if (err) debug('error writing stats file: %s', err.message)
+      writeWithFSync(blockStart, blockBuf, null, function flushedDelete(err) {
+        blocksWithDeletables.delete(-1) // indicate that flush is not active
+        if (err) {
+          for (const cb of waitingFlushDelete) cb(err)
+          waitingFlushDelete.length = 0
+          return
+        }
+        flushDelete() // next
+      })
     })
   }
 
@@ -505,28 +522,14 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function stats(cb) {
-    let totalCount = 0
-    let deletedCount = 0
-    let deletedBytes = 0
-    self.stream({ offsets: true, values: true, sizes: true }).pipe(
-      push.drain(
-        function sinkToMeasureHoles(record) {
-          totalCount += 1
-          if (record.value === null) {
-            deletedCount += 1
-            deletedBytes += record.size
-          }
-        },
-        function sinkEndedMeasureHoles() {
-          cb(null, {
-            totalCount,
-            totalBytes: since.value,
-            deletedCount,
-            deletedBytes,
-          })
-        }
-      )
-    )
+    if (since.value == null) {
+      since((totalBytes) => {
+        cb(null, { totalBytes, deletedBytes })
+        return false
+      })
+    } else {
+      cb(null, { totalBytes: since.value, deletedBytes })
+    }
   }
 
   function compact(cb) {
