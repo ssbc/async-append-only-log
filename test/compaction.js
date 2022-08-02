@@ -24,6 +24,10 @@ tape('compact a log that does not have holes', async (t) => {
   const file = '/tmp/compaction-test_' + Date.now() + '.log'
   const log = Log(file, { blockSize: 10 })
 
+  const [, stats] = await run(log.stats)()
+  t.equals(stats.totalBytes, 0, 'stats.totalBytes (1)')
+  t.equals(stats.deletedBytes, 0, 'stats.deletedBytes (1)')
+
   const buf1 = Buffer.from('first')
   const buf2 = Buffer.from('second')
 
@@ -32,9 +36,9 @@ tape('compact a log that does not have holes', async (t) => {
   await run(log.onDrain)()
   t.pass('append two records')
 
-  const [, stats] = await run(log.stats)()
-  t.equals(stats.totalBytes, 10, 'stats.totalBytes')
-  t.equals(stats.deletedBytes, 0, 'stats.deletedBytes')
+  const [, stats2] = await run(log.stats)()
+  t.equals(stats2.totalBytes, 10, 'stats.totalBytes (2)')
+  t.equals(stats2.deletedBytes, 0, 'stats.deletedBytes (2)')
 
   const progressArr = []
   log.compactionProgress((stats) => {
