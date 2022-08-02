@@ -547,6 +547,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
           compaction = new Compaction(self, (err, stats) => {
             compaction = null
             if (err) return cb(err)
+            deletedBytes = 0
+            const stats = JSON.stringify({ deletedBytes })
+            AtomicFile.writeFile(statsFilename, stats, 'utf8', () => {})
             compactionProgress.set({ ...stats, percent: 1, done: true })
             for (const callback of waitingCompaction) callback()
             waitingCompaction.length = 0

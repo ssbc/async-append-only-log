@@ -139,7 +139,7 @@ tape('compact waits for old log.streams to end', async (t) => {
 
   const [, stats3] = await run(log2.stats)()
   t.equals(stats3.totalBytes, 208048, 'stats.totalBytes (3)')
-  t.equals(stats3.deletedBytes, 12, 'stats.deletedBytes (3)')
+  t.equals(stats3.deletedBytes, 0, 'stats.deletedBytes (3)')
 
   await run(log2.close)()
 
