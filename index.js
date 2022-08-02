@@ -84,11 +84,16 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
 
   AtomicFile.readFile(statsFilename, 'utf8', function statsUp(err, json) {
     if (err) {
-      debug('error loading stats file: %s', err.message)
+      debug('error loading stats: %s', err.message)
       deletedBytes = 0
     } else {
-      const stats = JSON.parse(json)
-      deletedBytes = stats.deletedBytes
+      try {
+        const stats = JSON.parse(json)
+        deletedBytes = stats.deletedBytes
+      } catch (err) {
+        debug('error parsing stats: %s', err.message)
+        deletedBytes = 0
+      }
     }
 
     raf.stat(function onRAFStatDone(err, stat) {
@@ -308,9 +313,8 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     blocksWithDeletables.delete(blockIndex)
     blocksWithDeletables.set(-1, null) // indicate that flush is active
 
-    const stats = JSON.stringify({ deletedBytes })
-    AtomicFile.writeFile(statsFilename, stats, 'utf8', function statsDown(err) {
-      if (err) debug('error writing stats file: %s', err.message)
+    saveStats(function onSavedStats(err) {
+      if (err) debug('error saving stats: %s', err.message)
       writeWithFSync(blockStart, blockBuf, null, function flushedDelete(err) {
         blocksWithDeletables.delete(-1) // indicate that flush is not active
         if (err) {
@@ -532,6 +536,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     }
   }
 
+  function saveStats(cb) {
+    const stats = JSON.stringify({ deletedBytes })
+    AtomicFile.writeFile(statsFilename, stats, 'utf8', cb)
+  }
+
   function compact(cb) {
     if (compaction) {
       debug('compaction already in progress')
@@ -548,8 +557,10 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
             compaction = null
             if (err) return cb(err)
             deletedBytes = 0
-            const stats = JSON.stringify({ deletedBytes })
-            AtomicFile.writeFile(statsFilename, stats, 'utf8', () => {})
+            saveStats(function onSavedStatsAfterCompaction(err) {
+              if (err)
+                debug('error saving stats after compaction: %s', err.message)
+            })
             compactionProgress.set({ ...stats, percent: 1, done: true })
             for (const callback of waitingCompaction) callback()
             waitingCompaction.length = 0
