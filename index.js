@@ -59,6 +59,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   const waitingFlushDelete = []
   const blocksToBeWritten = new Map() // blockIndex -> { blockBuf, offset }
   const blocksWithDeletables = new Map() // blockIndex -> blockBuf
+  let flushingDelete = false
   let writingBlockIndex = -1
 
   let latestBlockBuf = null
@@ -311,12 +312,12 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
     const blockStart = blockIndex * blockSize
     const blockBuf = blocksWithDeletables.get(blockIndex)
     blocksWithDeletables.delete(blockIndex)
-    blocksWithDeletables.set(-1, null) // indicate that flush is active
+    flushingDelete = true
 
-    saveStats(function onSavedStats(err) {
-      if (err) debug('error saving stats: %s', err.message)
-      writeWithFSync(blockStart, blockBuf, null, function flushedDelete(err) {
-        blocksWithDeletables.delete(-1) // indicate that flush is not active
+    writeWithFSync(blockStart, blockBuf, null, function flushedDelete(err) {
+      saveStats(function onSavedStats(err) {
+        if (err) debug('error saving stats: %s', err.message)
+        flushingDelete = false
         if (err) {
           for (const cb of waitingFlushDelete) cb(err)
           waitingFlushDelete.length = 0
@@ -328,8 +329,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   }
 
   function onDeletesFlushed(cb) {
-    if (blocksWithDeletables.size === 0) cb()
-    else waitingFlushDelete.push(cb)
+    if (flushingDelete || blocksWithDeletables.size > 0) {
+      waitingFlushDelete.push(cb)
+    } else cb()
   }
 
   function appendSingle(data) {
