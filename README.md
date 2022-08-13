@@ -206,6 +206,9 @@ log.compact((err) => {
 })
 ```
 
+Note, this functionality is currently not available when running in a
+browser.
+
 ### Track progress of compactions
 
 As an [obz] observable:
