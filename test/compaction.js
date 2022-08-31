@@ -1074,3 +1074,52 @@ tape('there can only be one compact at a time', async (t) => {
   await run(log.close)()
   t.end()
 })
+
+tape('live streams post-compaction', async (t) => {
+  const file = '/tmp/compaction-test_' + Date.now() + '.log'
+  const log = Log(file, {
+    blockSize: 11, // fits 3 records of size 3 plus EOB of size 2
+    codec: hexCodec,
+  })
+
+  await run(log.append)(
+    [
+      // block 0
+      [0x11, 0x22, 0x33], // offsets: 0, 3, 6
+      // block 1
+      [0x44, 0x55, 0x66], // offsets: 11+0, 11+3, 11+6
+      // block 2
+      [0x77, 0x88, 0x99], // offsets: 22+0, 22+3, 22+6
+    ].flat()
+  )
+  t.pass('appended records')
+
+  let liveStreamFoundAA = false
+  log.stream({ gt: 22 + 6, offsets: false, old: false, live: true }).pipe({
+    paused: false,
+    write(hex) {
+      t.equal(hex, 0xaa)
+      liveStreamFoundAA = true
+    },
+    end() {},
+  })
+
+  await run(log.del)(11 + 3)
+  await run(log.del)(22 + 6)
+  await run(log.onDeletesFlushed)()
+  t.pass('deleted some records in the middle')
+
+  const [err] = await run(log.compact)()
+  await run(log.onDrain)()
+  t.error(err, 'no error when compacting')
+
+  await run(log.append)(0xaa)
+  t.pass('appended new record')
+
+  await timer(1000)
+
+  t.true(liveStreamFoundAA, 'live stream found new record')
+
+  await run(log.close)()
+  t.end()
+})
