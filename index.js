@@ -21,6 +21,7 @@ const {
   appendLargerThanBlockErr,
   appendTransactionWantsArrayErr,
   unexpectedTruncationErr,
+  compactWithMaxLiveStreamErr,
 } = require('./errors')
 const Stream = require('./stream')
 const Record = require('./record')
@@ -548,6 +549,11 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       debug('compaction already in progress')
       waitingCompaction.push(cb)
       return
+    }
+    for (const stream of self.streams) {
+      if (stream.live && (stream.max || stream.max_inclusive)) {
+        return cb(compactWithMaxLiveStreamErr())
+      }
     }
     onStreamsDone(function startCompactAfterStreamsDone() {
       onDrain(function startCompactAfterDrain() {
