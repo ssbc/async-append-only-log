@@ -563,6 +563,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
               if (err)
                 debug('error saving stats after compaction: %s', err.message)
             })
+            for (const stream of self.streams) {
+              if (stream.live) stream.postCompactionReset(since.value)
+            }
             compactionProgress.set({ ...stats, percent: 1, done: true })
             for (const callback of waitingCompaction) callback()
             waitingCompaction.length = 0
