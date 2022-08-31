@@ -38,6 +38,13 @@ function delDuringCompactErr() {
   return new Error('Cannot delete while compaction is in progress')
 }
 
+function compactWithMaxLiveStreamErr() {
+  return new Error(
+    'Compaction cannot run if there are live streams ' +
+      'configured with opts.lt or opts.lte'
+  )
+}
+
 function appendLargerThanBlockErr() {
   return new Error('Data to be appended is larger than block size')
 }
@@ -61,6 +68,7 @@ module.exports = {
   outOfBoundsOffsetErr,
   deletedRecordErr,
   delDuringCompactErr,
+  compactWithMaxLiveStreamErr,
   appendLargerThanBlockErr,
   appendTransactionWantsArrayErr,
   unexpectedTruncationErr,

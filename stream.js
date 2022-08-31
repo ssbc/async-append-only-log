@@ -184,10 +184,6 @@ Stream.prototype.liveResume = function liveResume() {
 }
 
 Stream.prototype.postCompactionReset = function postCompactionReset(offset) {
-  if (!this.live) throw new Error('postCompactionReset only works with live')
-  if (this.max || this.max_inclusive) {
-    throw new Error('postCompactionReset only works with no upper bound')
-  }
   this.cursor = Math.min(offset, this.cursor)
   this.min = null
   this.min_inclusive = null
