@@ -69,11 +69,18 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   let deletedBytes = 0
   const since = Obv() // offset of last written record
   let compaction = null
-  const compactionProgress = Obv().set(
-    Compaction.stateFileExists(filename)
-      ? { percent: 0, done: false }
-      : { percent: 1, done: true, sizeDiff: 0 }
-  )
+  const compactionProgress = Obv()
+  if (typeof window !== 'undefined') {
+    // fs sync not working in browser
+    compactionProgress.set({ percent: 1, done: true, sizeDiff: 0 })
+  } else {
+    compactionProgress.set(
+      Compaction.stateFileExists(filename)
+        ? { percent: 0, done: false }
+        : { percent: 1, done: true, sizeDiff: 0 }
+    )
+  }
+
   const waitingCompaction = []
 
   onLoad(function maybeResumeCompaction() {
