@@ -84,6 +84,9 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
   const waitingCompaction = []
 
   onLoad(function maybeResumeCompaction() {
+    // fs sync not working in browser
+    if (typeof window !== 'undefined') return
+
     if (Compaction.stateFileExists(filename)) {
       compact(function onCompactDone(err) {
         if (err) throw err
