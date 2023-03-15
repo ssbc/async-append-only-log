@@ -212,7 +212,7 @@ module.exports = function AsyncAppendOnlyLog(filename, opts) {
       if (length === EOB.asNumber) break
       const [dataBuf, recSize] = Record.read(blockBuf, offsetInRecord)
       const isLengthCorrupt = offsetInRecord + recSize > blockSize
-      const isDataCorrupt = !validateRecord(dataBuf)
+      const isDataCorrupt = !isBufferZero(dataBuf) && !validateRecord(dataBuf)
       if (isLengthCorrupt || isDataCorrupt) {
         fixBlock(blockBuf, offsetInRecord, blockStart, lastGoodOffset, cb)
         return

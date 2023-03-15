@@ -66,6 +66,61 @@ tape('simple', function (t) {
   })
 })
 
+tape('deleted records are never invalid (validateRecord)', function (t) {
+  var file = '/tmp/fao-test_del_invalid.log'
+  try {
+    fs.unlinkSync(file)
+  } catch (_) {}
+  var opts = {
+    blockSize: 2 * 1024,
+    codec: {
+      encode(msg) {
+        return Buffer.from(JSON.stringify(msg), 'utf8')
+      },
+      decode(buf) {
+        return JSON.parse(buf.toString('utf8'))
+      },
+    },
+    validateRecord(buf) {
+      try {
+        JSON.parse(buf.toString('utf8'))
+        return true
+      } catch {
+        return false
+      }
+    },
+  }
+  var db = Log(file, opts)
+
+  db.append({ text: 'm0' }, function (err, offset1) {
+    if (err) throw err
+    db.append({ text: 'm1' }, function (err, offset2) {
+      if (err) throw err
+      db.append({ text: 'm2' }, function (err, offset3) {
+        if (err) throw err
+
+        db.del(offset2, function (err) {
+          t.error(err)
+
+          db.onDeletesFlushed(() => {
+            db.close(() => {
+              var db2 = Log(file, opts)
+
+              db2.stream({ offsets: false }).pipe(
+                push.collect((err, ary) => {
+                  t.error(err)
+                  t.deepEqual(ary, [{ text: 'm0' }, null, { text: 'm2' }])
+                  db2.close(t.end)
+                })
+              )
+            })
+          })
+        })
+      })
+    })
+  })
+})
+
 tape('simple reread', function (t) {
   var file = '/tmp/fao-test_del.log'
   var db = Log(file, { blockSize: 2 * 1024 })
@@ -186,9 +241,9 @@ tape('delete many', async (t) => {
         t.error(err, 'no error on streaming')
         for (let i = 0; i < TOTAL; i += 1) {
           if (i % 2 === 0) {
-            if (ary[i] !== null) t.fail('record '+ i + ' should be deleted')
+            if (ary[i] !== null) t.fail('record ' + i + ' should be deleted')
           } else {
-            if (ary[i] === null) t.fail('record '+ i + ' should be present')
+            if (ary[i] === null) t.fail('record ' + i + ' should be present')
           }
         }
         resolve()
